@@ -1,0 +1,148 @@
+:root {
+  --primary-color: #1976d2;
+  --secondary-color: #dc004e;
+  --background-color: #f4f6f8;
+  --font-family: "Roboto", "Helvetica", "Arial", sans-serif;
+  --card-shadow: 0 8px 32px 0 rgba(0, 0, 0, 0.1);
+  --card-radius: 16px;
+}
+
+body {
+  margin: 0;
+  font-family: var(--font-family);
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+  background-color: var(--background-color);
+  color: #333;
+}
+
+.app-container {
+  padding: 2rem;
+}
+
+.main-card {
+  padding: 2.5rem;
+  border-radius: var(--card-radius) !important;
+  box-shadow: var(--card-shadow) !important;
+  background-color: #ffffff !important;
+  transition: all 0.3s ease-in-out;
+}
+
+.main-card:hover {
+  transform: translateY(-5px);
+  box-shadow: 0 12px 40px 0 rgba(0, 0, 0, 0.12) !important;
+}
+
+.form-title {
+  text-align: center;
+  margin-bottom: 2rem !important;
+  font-weight: 700 !important;
+  color: var(--primary-color);
+}
+
+.dropzone {
+  border: 2px dashed #d0d0d0;
+  border-radius: 8px;
+  padding: 2rem;
+  text-align: center;
+  cursor: pointer;
+  background-color: #f9f9f9;
+  color: #666666;
+  transition: all 0.3s ease;
+  margin-top: 1rem;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+}
+
+.dropzone.active {
+  border-color: var(--primary-color);
+  background-color: #e3f2fd;
+  transform: scale(1.02);
+}
+
+.dropzone:hover {
+  border-color: var(--primary-color);
+  background-color: #f5faff;
+}
+
+.result-card {
+  margin-top: 0;
+  border-radius: var(--card-radius) !important;
+  box-shadow: var(--card-shadow) !important;
+  height: 100%;
+}
+
+.result-title {
+  font-weight: 700 !important;
+  color: var(--primary-color);
+}
+
+.score-dial {
+  position: relative;
+  display: inline-flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-circle {
+  transition: transform 0.5s ease-in-out, color 0.5s ease-in-out;
+}
+
+.score-circle.score-high {
+  color: #4caf50; /* Green */
+}
+.score-circle.score-medium {
+  color: #ffc107; /* Amber */
+}
+.score-circle.score-low {
+  color: #f44336; /* Red */
+}
+
+.score-text-box {
+  top: 0;
+  left: 0;
+  bottom: 0;
+  right: 0;
+  position: absolute;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+}
+
+.score-text {
+  font-weight: bold;
+  color: #333;
+}
+
+.keyword-container {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 10px;
+  margin-top: 12px;
+}
+
+.tab-panel {
+  padding-top: 1.5rem;
+}
+
+.loading-container {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  height: 100%;
+  text-align: center;
+  padding: 2rem;
+}
+
+.placeholder-card {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  padding: 3rem;
+  height: 100%;
+}
