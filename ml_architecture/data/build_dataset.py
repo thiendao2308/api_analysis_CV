@@ -11,6 +11,7 @@ import logging
 import sys
 import shutil
 import random
+import csv
 
 # Suppress pandas warnings
 warnings.filterwarnings("ignore", category=UserWarning, module="pandas")
@@ -98,17 +99,10 @@ ENTITY_PATTERNS = {
     ]
 }
 
-ENTITY_PATTERNS["POSITION"] += [
-    # --- Y tế, bệnh viện, phòng khám ---
-    r"Bác sĩ", r"Bác sĩ chuyên khoa", r"Bác sĩ nội trú", r"Bác sĩ đa khoa", r"Doctor", r"Medical Doctor", r"Physician",
-    r"Điều dưỡng", r"Nurse", r"Registered Nurse", r"Y tá", r"Nurse Assistant",
-    r"Dược sĩ", r"Pharmacist",
-    r"Kỹ thuật viên xét nghiệm", r"Lab Technician", r"Medical Laboratory Technician",
-    r"Kỹ thuật viên hình ảnh", r"Radiology Technician", r"Imaging Technician",
-    r"Nhân viên y tế", r"Healthcare Staff", r"Medical Staff",
-    r"Nhân viên phòng khám", r"Clinic Staff",
-    r"Nhân viên chăm sóc sức khỏe", r"Health Care Assistant", r"Caregiver"
-]
+# Chỉ giữ lại pattern SKILL
+ENTITY_PATTERNS = {
+    "SKILL": ENTITY_PATTERNS["SKILL"]
+}
 
 
 def get_labelled_spans(doc, patterns):
@@ -138,30 +132,27 @@ def get_labelled_spans(doc, patterns):
 
 def stream_csv_data(file_path: Path, chunk_size: int):
     """
-    Streams data from a CSV file, handling different column names for text.
-    Yields chunks of DataFrame.
+    Streams data from a CSV file, handling files with or without headers.
+    Yields chunks of DataFrame with a 'text' column.
     """
     if not file_path.exists():
         logging.warning(f"Source file not found: {file_path}. Skipping.")
         return
 
-    column_map = {
-        "job_descriptions.csv": "Job Description",
-        "Resume.csv": "Resume_str"
-    }
-    text_column = column_map.get(file_path.name)
-
-    if not text_column:
-        logging.warning(f"No text column mapping for file: {file_path.name}. Skipping.")
-        return
-
+    # Nếu file có header 'text', đọc bình thường
     try:
-        for chunk in pd.read_csv(file_path, chunksize=chunk_size, on_bad_lines='warn'):
-            if text_column in chunk.columns:
-                chunk.rename(columns={text_column: "text"}, inplace=True)
-                yield chunk
-            else:
-                logging.warning(f"Expected column '{text_column}' not in {file_path.name}. Skipping chunk.")
+        df = pd.read_csv(file_path, nrows=1)
+        if 'text' in df.columns:
+            for chunk in pd.read_csv(file_path, chunksize=chunk_size):
+                yield chunk[['text']]
+            return
+    except Exception:
+        pass
+
+    # Nếu không có header, đọc từng dòng và gán vào cột 'text'
+    try:
+        for chunk in pd.read_csv(file_path, header=None, names=['text'], chunksize=chunk_size):
+            yield chunk
     except Exception as e:
         logging.error(f"Error reading {file_path}: {e}")
 
@@ -193,7 +184,7 @@ def main(
     train_dir.mkdir(parents=True, exist_ok=True)
 
     # Define the data sources
-    jd_path = Path("ml_architecture/data/dataset_JD/job_descriptions.csv")
+    jd_path = Path(__file__).parent / "dataset_JD" / "job_descriptions1_part1.csv"
     data_sources = [jd_path]
 
     total_docs_processed = 0
@@ -254,6 +245,36 @@ def main(
     print(f"Đã chia {len(train_shards)} shard vào train, {len(dev_shards)} shard vào dev.")
     # Xóa thư mục tạm nếu muốn
     shutil.rmtree(shard_temp_dir)
+
+    # Thay vì lưu .spacy, ta lưu ra CSV với text và skills
+    output_csv = output_dir / "labeled_jd_skill.csv"
+    output_csv.parent.mkdir(parents=True, exist_ok=True)
+    total_skill_count = 0
+    rows = []
+    for source_path in data_sources:
+        logging.info(f"Starting processing for: {source_path.name}")
+        data_stream = stream_csv_data(source_path, chunk_size=batch_size)
+        for df_chunk in tqdm(data_stream, desc=f"Streaming {source_path.name}"):
+            df_chunk.dropna(subset=['text'], inplace=True)
+            texts = df_chunk['text'].astype(str)
+            for doc in nlp.pipe(texts):
+                try:
+                    spans = get_labelled_spans(doc, ENTITY_PATTERNS)
+                    doc.ents = spans
+                    # Lấy danh sách skill
+                    skills = [span.text for span in spans if span.label_ == "SKILL"]
+                    total_skill_count += len(skills)
+                    rows.append({"text": doc.text, "skills": ", ".join(skills)})
+                except Exception as e:
+                    logging.error(f"Error processing a document: {e}")
+    # Ghi ra file CSV
+    with open(output_csv, "w", encoding="utf-8", newline="") as f:
+        writer = csv.DictWriter(f, fieldnames=["text", "skills"])
+        writer.writeheader()
+        writer.writerows(rows)
+    print(f"\nĐã xuất dữ liệu đã gán nhãn SKILL ra file: {output_csv}")
+    print(f"Tổng số SKILL được gán nhãn: {total_skill_count}")
+    logging.info(f"Tổng số SKILL được gán nhãn: {total_skill_count}")
 
     logging.info(f"--- Processing Complete ---")
     logging.info(f"Total documents processed: {total_docs_processed}")

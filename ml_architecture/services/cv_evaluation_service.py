@@ -4,27 +4,38 @@ import re
 import random
 import joblib
 import numpy as np
+import spacy
 from typing import Dict, List, Tuple, Optional
 from collections import Counter
 
-from .cv_parser import CVParser
-from .cv_quality_analyzer import CVQualityAnalyzer
-from .suggestion_generator import SuggestionGenerator
-from ..models.shared_models import ParsedCV
-from ..data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
+# Fix relative imports
+try:
+    from .cv_parser import IntelligentCVParser
+    from .cv_quality_analyzer import CVQualityAnalyzer
+    from .suggestion_generator import SuggestionGenerator
+    from ..models.shared_models import ParsedCV
+    from ..data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
+except ImportError:
+    # Fallback for direct execution
+    import sys
+    import os
+    sys.path.append(os.path.join(os.path.dirname(__file__), '..'))
+    from services.cv_parser import IntelligentCVParser
+    from services.cv_quality_analyzer import CVQualityAnalyzer
+    from services.suggestion_generator import SuggestionGenerator
+    from models.shared_models import ParsedCV
+    from data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
 
 class CVEvaluationService:
     """
     Service tích hợp đánh giá CV theo yêu cầu:
-    1. Import CV và chọn nghề ứng tuyển
-    2. Đánh giá CV theo tiêu chí nghề đó
-    3. Tính điểm ATS (40% nếu CV chuẩn)
-    4. Đánh giá linh hoạt, tự nhiên như con người
-    5. Sử dụng mô hình đã train để học pattern CV tốt
+    BƯỚC 3: So sánh CV-JD để tính độ phù hợp (MML)
+    BƯỚC 5: Liệt kê kỹ năng còn thiếu (MML)  
+    BƯỚC 6: Chấm điểm tổng thể ATS (MML)
     """
     
     def __init__(self):
-        self.cv_parser = CVParser()
+        self.cv_parser = IntelligentCVParser()
         self.quality_analyzer = CVQualityAnalyzer()
         self.suggestion_generator = SuggestionGenerator()
         
@@ -33,6 +44,9 @@ class CVEvaluationService:
         self.vectorizer = None
         self.feature_importance = None
         self._load_trained_model()
+        
+        # Load NER model cho JD analysis
+        self.jd_nlp = self._load_jd_ner_model()
         
         # Bộ từ khóa section (từ evaluate_cv.py)
         self.section_keywords = [
@@ -120,6 +134,43 @@ class CVEvaluationService:
             ]
         }
     
+    def _load_jd_ner_model(self):
+        """Load NER model cho JD analysis - BƯỚC 2"""
+        try:
+            # Thử load model mới đã train
+            model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'model_full', 'model-best')
+            print(f"BƯỚC 2: Đang tải JD NER model từ: {model_path}")
+            return spacy.load(model_path)
+        except OSError:
+            try:
+                # Fallback sang model cũ
+                model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'model', 'model-best')
+                print(f"BƯỚC 2: Fallback sang JD NER model cũ: {model_path}")
+                return spacy.load(model_path)
+            except OSError:
+                print("BƯỚC 2: Không tìm thấy JD NER model, sử dụng model mặc định")
+                return None
+    
+    def extract_jd_skills(self, jd_text: str) -> List[str]:
+        """BƯỚC 2: Trích xuất skills từ JD sử dụng NER model"""
+        if not self.jd_nlp:
+            return []
+        
+        try:
+            doc = self.jd_nlp(jd_text)
+            skills = []
+            
+            for ent in doc.ents:
+                if ent.label_ == "SKILL":
+                    skill_text = ent.text.strip()
+                    if skill_text and len(skill_text) > 1:
+                        skills.append(skill_text)
+            
+            return list(set(skills))  # Loại bỏ duplicates
+        except Exception as e:
+            print(f"BƯỚC 2: Lỗi khi trích xuất skills từ JD: {e}")
+            return []
+
     def _load_trained_model(self):
         """Load mô hình đã train và trích xuất feature importance"""
         try:
@@ -145,232 +196,386 @@ class CVEvaluationService:
             return []
         
         try:
-            # Lấy top features quan trọng nhất
-            top_indices = np.argsort(self.feature_importance)[-20:]  # Top 20 features
+            # Đây là logic đơn giản, có thể mở rộng dựa trên feature importance
             important_features = []
             
-            # Nếu có vectorizer, lấy tên feature
-            if hasattr(self.ml_model, 'feature_names_in_'):
-                for idx in top_indices:
-                    feature_name = self.ml_model.feature_names_in_[idx]
-                    if feature_name not in self.stopwords and len(feature_name) > 2:
-                        important_features.append(feature_name)
+            # Thêm các từ khóa quan trọng cho từng ngành
+            job_keywords = {
+                "INFORMATION-TECHNOLOGY": ["python", "java", "javascript", "react", "node.js", "sql", "aws", "docker"],
+                "ENGINEERING": ["autocad", "solidworks", "matlab", "engineering", "design", "analysis"],
+                "FINANCE": ["excel", "financial", "accounting", "budget", "analysis", "reporting"],
+                "SALES": ["sales", "customer", "negotiation", "communication", "target", "revenue"],
+                "HR": ["recruitment", "hiring", "employee", "training", "policy", "benefits"],
+                "MARKETING": ["marketing", "social media", "campaign", "brand", "content", "analytics"]
+            }
             
-            return important_features[:10]  # Trả về top 10
+            if job_category.upper() in job_keywords:
+                important_features = job_keywords[job_category.upper()]
+            
+            return important_features
         except Exception as e:
             print(f"❌ Lỗi khi lấy important features: {e}")
             return []
-    
+
     def _analyze_cv_with_ml_insights(self, cv_text: str, job_category: str) -> Dict:
-        """Phân tích CV với insights từ mô hình ML đã train"""
+        """BƯỚC 3: Phân tích CV với ML insights"""
         ml_insights = {
-            'predicted_job': None,
-            'confidence': 0.0,
-            'important_features_missing': [],
-            'important_features_found': [],
-            'ml_suggestions': []
+            'ml_score': 0,
+            'ml_suggestions': [],
+            'important_features': []
         }
         
-        if self.ml_model is not None:
-            try:
-                # Dự đoán ngành nghề
-                cv_vector = self.vectorizer.transform([cv_text]) if self.vectorizer else None
-                if cv_vector is not None:
-                    prediction = self.ml_model.predict(cv_vector)[0]
-                    confidence = np.max(self.ml_model.predict_proba(cv_vector))
-                    
-                    ml_insights['predicted_job'] = prediction
-                    ml_insights['confidence'] = confidence
-                    
-                    # So sánh với ngành user chọn
-                    if prediction != job_category:
-                        ml_insights['ml_suggestions'].append(
-                            f"ML gợi ý ngành: {prediction} (độ tin cậy: {confidence:.2f})"
-                        )
+        try:
+            # Lấy important features cho job category
+            important_features = self._get_important_features_for_job(job_category)
+            ml_insights['important_features'] = important_features
+            
+            # Phân tích matching với important features
+            cv_lower = cv_text.lower()
+            matched_features = []
+            
+            for feature in important_features:
+                if feature.lower() in cv_lower:
+                    matched_features.append(feature)
+            
+            # Tính điểm ML
+            if important_features:
+                ml_score = len(matched_features) / len(important_features) * 100
+                ml_insights['ml_score'] = ml_score
+            
+            # Tạo gợi ý ML
+            if matched_features:
+                ml_insights['ml_suggestions'].append(
+                    f"✅ Bạn đã có các kỹ năng quan trọng: {', '.join(matched_features)}"
+                )
+            
+            missing_features = [f for f in important_features if f.lower() not in cv_lower]
+            if missing_features:
+                ml_insights['ml_suggestions'].append(
+                    f"⚠️ Cần bổ sung: {', '.join(missing_features[:3])}"
+                )
                 
-                # Lấy important features cho ngành này
-                important_features = self._get_important_features_for_job(job_category)
-                cv_lower = cv_text.lower()
-                
-                for feature in important_features:
-                    if feature.lower() in cv_lower:
-                        ml_insights['important_features_found'].append(feature)
-                    else:
-                        ml_insights['important_features_missing'].append(feature)
-                
-                # Tạo gợi ý từ ML insights
-                if ml_insights['important_features_missing']:
-                    ml_insights['ml_suggestions'].append(
-                        f"Nên bổ sung: {', '.join(ml_insights['important_features_missing'][:5])}"
-                    )
-                
-            except Exception as e:
-                print(f"❌ Lỗi khi phân tích với ML: {e}")
+        except Exception as e:
+            print(f"❌ Lỗi khi phân tích ML insights: {e}")
         
         return ml_insights
-    
-    def evaluate_cv_comprehensive(self, cv_text: str, job_category: str) -> Dict:
+
+    def evaluate_cv_comprehensive(self, cv_text: str, job_category: str, job_position: str = None, jd_text: str = None, job_requirements: str = None) -> Dict:
         """
-        Đánh giá CV toàn diện theo yêu cầu:
-        1. Đánh giá theo tiêu chí nghề nghiệp
-        2. Tính điểm ATS (40% nếu CV chuẩn)
-        3. Đánh giá linh hoạt, tự nhiên
-        4. Sử dụng insights từ mô hình ML đã train
+        BƯỚC 3: So sánh CV-JD để tính độ phù hợp (MML)
+        BƯỚC 5: Liệt kê kỹ năng còn thiếu (MML)  
+        BƯỚC 6: Chấm điểm tổng thể ATS (MML)
         """
+        try:
+            print(f"🚀 BƯỚC 3: Bắt đầu phân tích CV-JD cho {job_category} - {job_position}")
+            
+            # BƯỚC 1: Parse CV với parser thông minh
+            from .cv_parser import parse_cv_file
+            import tempfile
+            import os
+            
+            # Tạo file tạm để parse
+            with tempfile.NamedTemporaryFile(mode='w', suffix='.txt', delete=False) as f:
+                f.write(cv_text)
+                temp_file_path = f.name
+            
+            try:
+                parsed_cv = parse_cv_file(temp_file_path, job_category)
+                print(f"✅ BƯỚC 1: Parse CV thành công - Job Title: {parsed_cv.get('job_title', 'N/A')}")
+            finally:
+                # Xóa file tạm
+                if os.path.exists(temp_file_path):
+                    os.unlink(temp_file_path)
+            
+            # BƯỚC 2: Phân tích JD và trích xuất skills
+            jd_skills = []
+            if jd_text:
+                jd_skills = self.extract_jd_skills(jd_text)
+                print(f"✅ BƯỚC 2: Trích xuất {len(jd_skills)} skills từ JD")
+            
+            # BƯỚC 3: So sánh CV-JD
+            cv_skills = parsed_cv.get('skills', [])
+            cv_job_title = parsed_cv.get('job_title', '')
+            
+            # Kiểm tra sự phù hợp job title vs job position
+            position_match_score = self._check_position_match(cv_job_title, job_position, job_category)
+            
+            # Tính điểm matching skills
+            matching_skills = [skill for skill in cv_skills if skill.lower() in [jd_skill.lower() for jd_skill in jd_skills]]
+            missing_skills = [skill for skill in jd_skills if skill.lower() not in [cv_skill.lower() for cv_skill in cv_skills]]
+            
+            skills_match_score = len(matching_skills) / max(len(jd_skills), 1) * 100 if jd_skills else 0
+            
+            print(f"✅ BƯỚC 3: Skills matching - {len(matching_skills)}/{len(jd_skills)} ({skills_match_score:.1f}%)")
+            
+            # BƯỚC 4: Phân tích chất lượng CV
+            # Chuyển đổi parsed_cv dict thành ParsedCV object
+            from ..models.shared_models import ParsedCV
+            parsed_cv_obj = ParsedCV(
+                summary=parsed_cv.get('sections', {}).get('summary', ''),
+                skills=parsed_cv.get('skills', []),
+                experience=parsed_cv.get('sections', {}).get('experience', ''),
+                education=parsed_cv.get('sections', {}).get('education', '')
+            )
+            quality_analysis = self.quality_analyzer.analyze(parsed_cv_obj)
+            print(f"✅ BƯỚC 4: Phân tích chất lượng CV hoàn tất")
+            
+            # BƯỚC 5: ML insights
+            ml_insights = self._analyze_cv_with_ml_insights(cv_text, job_category)
+            print(f"✅ BƯỚC 5: ML insights hoàn tất")
+            
+            # BƯỚC 6: Tính điểm ATS và Overall
+            ats_score = self._calculate_ats_score(quality_analysis, parsed_cv_obj)
+            overall_score = self._calculate_overall_score(
+                ats_score, quality_analysis, len(cv_skills), len(jd_skills),
+                cv_skills, jd_skills, job_category, position_match_score
+            )
+            
+            print(f"✅ BƯỚC 6: ATS Score: {ats_score}, Overall Score: {overall_score}")
+            
+            # BƯỚC 7: Tạo feedback và suggestions
+            feedback = self._generate_flexible_feedback(quality_analysis, parsed_cv_obj, ml_insights, jd_skills, job_category, overall_score)
+            suggestions = self._generate_improvement_suggestions(quality_analysis, parsed_cv_obj, ml_insights, jd_skills)
+            
+            # Tạo kết quả chi tiết
+            result = {
+                "cv_analysis": {
+                    "job_title": cv_job_title,
+                    "skills": cv_skills,
+                    "experience": parsed_cv.get('experience', []),
+                    "education": parsed_cv.get('education', []),
+                    "projects": parsed_cv.get('projects', []),
+                    "sections": parsed_cv.get('sections', {})
+                },
+                "jd_analysis": {
+                    "extracted_skills": jd_skills,
+                    "jd_text": jd_text
+                },
+                "matching_analysis": {
+                    "matching_skills": matching_skills,
+                    "missing_skills": missing_skills,
+                    "skills_match_score": round(skills_match_score, 1),
+                    "position_match_score": position_match_score,
+                    "total_skills_cv": len(cv_skills),
+                    "total_skills_jd": len(jd_skills)
+                },
+                "quality_analysis": quality_analysis,
+                "ml_insights": ml_insights,
+                "scores": {
+                    "ats_score": ats_score,
+                    "overall_score": overall_score
+                },
+                "feedback": feedback,
+                "suggestions": suggestions,
+                "job_category": job_category,
+                "job_position": job_position
+            }
+            
+            print(f"🎉 Phân tích hoàn tất - Overall Score: {overall_score}")
+            return result
+            
+        except Exception as e:
+            print(f"❌ Lỗi trong evaluate_cv_comprehensive: {str(e)}")
+            import traceback
+            traceback.print_exc()
+            return {
+                "error": f"Lỗi phân tích: {str(e)}",
+                "cv_analysis": {},
+                "jd_analysis": {},
+                "matching_analysis": {},
+                "quality_analysis": {},
+                "ml_insights": {},
+                "scores": {"ats_score": 0, "overall_score": 0},
+                "feedback": "Có lỗi xảy ra trong quá trình phân tích",
+                "suggestions": ["Vui lòng thử lại với CV khác"],
+                "job_category": job_category,
+                "job_position": job_position
+            }
+
+    def _check_position_match(self, cv_job_title: str, job_position: str, job_category: str) -> int:
+        """Kiểm tra sự phù hợp giữa job title trong CV và job position được chọn"""
+        if not cv_job_title or not job_position:
+            return 50  # Trung bình nếu không có thông tin
         
-        # Bước 1: Đánh giá CV theo tiêu chí nghề nghiệp
-        job_evaluation = evaluate_cv(cv_text, job_category)
+        cv_title_lower = cv_job_title.lower()
+        job_pos_lower = job_position.lower()
         
-        # Bước 2: Parse CV để phân tích cấu trúc
-        parsed_cv = self.cv_parser.parse(cv_text)
-        quality_analysis = self.quality_analyzer.analyze(parsed_cv)
-        
-        # Bước 3: Phân tích với insights từ ML
-        ml_insights = self._analyze_cv_with_ml_insights(cv_text, job_category)
-        
-        # Bước 4: Tính điểm ATS
-        ats_score = self._calculate_ats_score(job_evaluation, quality_analysis)
-        
-        # Bước 5: Tạo feedback linh hoạt
-        flexible_feedback = self._generate_flexible_feedback(job_evaluation, parsed_cv, ml_insights)
-        
-        # Bước 6: Tạo gợi ý cải thiện
-        suggestions = self._generate_improvement_suggestions(job_evaluation, parsed_cv, ml_insights)
-        
-        return {
-            "job_category": job_category,
-            "ats_score": ats_score,
-            "level": job_evaluation.get('level', 'Cần cải thiện'),
-            "overall_feedback": flexible_feedback,
-            "found_entities": job_evaluation.get('found_entities', []),
-            "improvement_suggestions": suggestions,
-            "quality_score": quality_analysis.get('quality_score', 0),
-            "strengths": quality_analysis.get('strengths', []),
-            "job_evaluation_score": job_evaluation.get('total_score', 0),
-            "ml_insights": ml_insights
+        # Mapping job position values to keywords
+        position_keywords = {
+            "FRONTEND_DEVELOPER": ["frontend", "front-end", "front end", "react", "angular", "vue"],
+            "BACKEND_DEVELOPER": ["backend", "back-end", "back end", "python", "java", "node"],
+            "FULLSTACK_DEVELOPER": ["fullstack", "full-stack", "full stack", "fullstack"],
+            "MOBILE_DEVELOPER": ["mobile", "android", "ios", "flutter", "react native"],
+            "DATA_SCIENTIST": ["data scientist", "data science", "machine learning", "ai"],
+            "DEVOPS_ENGINEER": ["devops", "cloud", "aws", "azure", "docker"],
+            "QA_ENGINEER": ["qa", "quality", "test", "testing"],
+            "UI_UX_DESIGNER": ["ui", "ux", "designer", "user interface"],
+            "SEO_SPECIALIST": ["seo", "search engine", "digital marketing"],
+            "DIGITAL_MARKETING": ["digital marketing", "marketing", "social media"],
+            "SALES_REPRESENTATIVE": ["sales", "representative", "business development"],
+            "HR_SPECIALIST": ["hr", "human resources", "recruitment"],
+            "ACCOUNTANT": ["accountant", "accounting", "finance"],
+            "FINANCIAL_ANALYST": ["financial analyst", "finance", "analysis"],
         }
-    
-    def _calculate_ats_score(self, job_evaluation: Dict, quality_analysis: Dict) -> int:
-        """
-        Tính điểm ATS:
-        - 40% nếu CV đạt chuẩn (đủ entity bắt buộc và cấu trúc tốt)
-        - Điểm dựa trên chất lượng CV và entity matching
-        """
-        job_score = job_evaluation.get('total_score', 0) / 100  # Chuyển về thang 0-1
-        quality_score = quality_analysis.get('quality_score', 0)
         
-        # Tính điểm ATS (40% tối đa)
+        # Kiểm tra match
+        if job_position in position_keywords:
+            keywords = position_keywords[job_position]
+            for keyword in keywords:
+                if keyword in cv_title_lower:
+                    return 100  # Perfect match
+            return 30  # Low match
+        else:
+            # Fallback: kiểm tra từ khóa chung
+            if any(word in cv_title_lower for word in job_pos_lower.split('_')):
+                return 80
+            return 40
+
+    def _calculate_ats_score(self, quality_analysis: Dict, parsed_cv: ParsedCV) -> int:
+        """BƯỚC 6: Tính điểm ATS dựa trên chất lượng CV"""
         ats_score = 0
         
-        # Nếu CV đạt chuẩn (job_score >= 0.8 và quality_score >= 0.75)
-        if job_score >= 0.8 and quality_score >= 0.75:
-            ats_score = 40
-        elif job_score >= 0.6 and quality_score >= 0.5:
-            ats_score = int(30 * job_score)  # 0-30 điểm
-        elif job_score >= 0.4 and quality_score >= 0.25:
-            ats_score = int(20 * job_score)  # 0-20 điểm
-        else:
-            ats_score = int(10 * job_score)  # 0-10 điểm
+        # Điểm cho format chuẩn
+        if quality_analysis.get('quality_score', 0) >= 0.75:
+            ats_score += 20
         
-        return ats_score
-    
-    def _generate_flexible_feedback(self, job_evaluation: Dict, parsed_cv: ParsedCV, ml_insights: Dict) -> str:
-        """
-        Tạo feedback linh hoạt, tự nhiên như con người với insights từ ML
-        """
-        level = job_evaluation.get('level', 'Cần cải thiện')
-        found_entities = job_evaluation.get('found_entities', [])
-        
-        # Chọn template feedback ngẫu nhiên
-        template = random.choice(self.feedback_templates.get(level, self.feedback_templates["Cần cải thiện"]))
-        
-        # Thêm thông tin cụ thể về ưu điểm
-        strengths = []
-        if found_entities:
-            strengths.append(f"Ưu điểm: {', '.join(found_entities[:3])}")  # Giới hạn 3 entity
-        
+        # Điểm cho skills
         if parsed_cv.skills:
-            strengths.append(f"Kỹ năng: {', '.join(parsed_cv.skills[:3])}")
+            ats_score += min(len(parsed_cv.skills) * 2, 20)  # Tối đa 20 điểm
         
+        # Điểm cho experience
         if parsed_cv.experience:
-            strengths.append("Có kinh nghiệm làm việc")
+            ats_score += 15
         
+        # Điểm cho education
         if parsed_cv.education:
-            strengths.append("Có trình độ học vấn")
+            ats_score += 10
         
-        # Thêm insights từ ML
-        if ml_insights.get('important_features_found'):
-            strengths.append(f"Từ khóa quan trọng: {', '.join(ml_insights['important_features_found'][:3])}")
+        # Điểm cho summary
+        if parsed_cv.summary:
+            ats_score += 10
         
-        # Thêm nhược điểm
-        weaknesses = []
-        if not found_entities:
-            weaknesses.append("Thiếu các kỹ năng chuyên môn quan trọng")
+        return min(ats_score, 100)
+
+    def _calculate_overall_score(self, ats_score: int, quality_analysis: Dict, cv_skills_count: int, jd_skills_count: int, cv_skills: List[str], jd_skills: List[str], job_category: str, position_match_score: int) -> int:
+        """
+        Tính điểm tổng thể với logic mới:
+        - ATS Score: 40%
+        - Skills Matching: 30%
+        - Position Match: 20%
+        - Quality Analysis: 10%
+        """
+        try:
+            # 1. ATS Score (40%)
+            ats_component = ats_score * 0.4
+            
+            # 2. Skills Matching (30%)
+            skills_match = 0
+            if jd_skills_count > 0:
+                matching_count = len([s for s in cv_skills if s.lower() in [js.lower() for js in jd_skills]])
+                skills_match = (matching_count / jd_skills_count) * 100
+            skills_component = skills_match * 0.3
+            
+            # 3. Position Match (20%)
+            position_component = position_match_score * 0.2
+            
+            # 4. Quality Analysis (10%)
+            quality_score = quality_analysis.get('overall_score', 50)
+            quality_component = quality_score * 0.1
+            
+            # Tính tổng
+            overall_score = ats_component + skills_component + position_component + quality_component
+            
+            # Đảm bảo điểm trong khoảng 0-100
+            overall_score = max(0, min(100, overall_score))
+            
+            print(f"📊 Overall Score Breakdown:")
+            print(f"   - ATS Component: {ats_component:.1f}")
+            print(f"   - Skills Component: {skills_component:.1f}")
+            print(f"   - Position Component: {position_component:.1f}")
+            print(f"   - Quality Component: {quality_component:.1f}")
+            print(f"   - Total: {overall_score:.1f}")
+            
+            return round(overall_score)
+            
+        except Exception as e:
+            print(f"❌ Lỗi tính overall score: {e}")
+            return 50  # Fallback score
+
+    def _generate_flexible_feedback(self, quality_analysis: Dict, parsed_cv: ParsedCV, ml_insights: Dict, jd_skills: List[str], job_category: str, overall_score: int = None) -> str:
+        """BƯỚC 5: Tạo feedback linh hoạt dựa trên phân tích"""
+        # Sử dụng overall_score đã được tính trước đó
+        if overall_score is None:
+            # Fallback: tính lại nếu cần
+            ats_score = self._calculate_ats_score(quality_analysis, parsed_cv)
+            overall_score = self._calculate_overall_score(
+                ats_score,
+                quality_analysis,
+                len(parsed_cv.skills),
+                len(jd_skills),
+                parsed_cv.skills,
+                jd_skills,
+                job_category,
+                50  # Default position match score
+            )
         
-        if not parsed_cv.skills:
-            weaknesses.append("Chưa nêu rõ kỹ năng")
+        # Chọn template dựa trên điểm
+        if overall_score >= 85:
+            template_key = "Xuất sắc"
+        elif overall_score >= 70:
+            template_key = "Tốt"
+        elif overall_score >= 50:
+            template_key = "Trung bình"
+        else:
+            template_key = "Cần cải thiện"
         
-        if not parsed_cv.experience:
-            weaknesses.append("Thiếu kinh nghiệm làm việc")
+        # Chọn feedback ngẫu nhiên từ template
+        feedback = random.choice(self.feedback_templates[template_key])
         
-        # Thêm nhược điểm từ ML insights
-        if ml_insights.get('important_features_missing'):
-            weaknesses.append(f"Thiếu từ khóa quan trọng: {', '.join(ml_insights['important_features_missing'][:3])}")
-        
-        # Tạo feedback hoàn chỉnh
-        feedback = template
-        
-        if strengths:
-            feedback += f" {', '.join(strengths)}."
-        
-        if weaknesses:
-            feedback += f" Nhược điểm: {', '.join(weaknesses)}."
-        
-        # Thêm gợi ý từ ML nếu có
-        if ml_insights.get('ml_suggestions'):
-            feedback += f" Gợi ý từ AI: {ml_insights['ml_suggestions'][0]}"
+        # Thêm thông tin cụ thể
+        if jd_skills:
+            cv_skills_set = set(parsed_cv.skills)
+            jd_skills_set = set(jd_skills)
+            matching_skills = cv_skills_set.intersection(jd_skills_set)
+            
+            if matching_skills:
+                feedback += f"\n\n✅ Kỹ năng phù hợp: {', '.join(list(matching_skills)[:5])}"
+            
+            missing_skills = jd_skills_set - cv_skills_set
+            if missing_skills:
+                feedback += f"\n\n⚠️ Cần bổ sung: {', '.join(list(missing_skills)[:5])}"
         
         return feedback
-    
-    def _generate_improvement_suggestions(self, job_evaluation: Dict, parsed_cv: ParsedCV, ml_insights: Dict) -> List[str]:
-        """
-        Tạo gợi ý cải thiện cụ thể với insights từ ML
-        """
+
+    def _generate_improvement_suggestions(self, quality_analysis: Dict, parsed_cv: ParsedCV, ml_insights: Dict, jd_skills: List[str]) -> List[str]:
+        """BƯỚC 4: Tạo gợi ý cải thiện"""
         suggestions = []
         
-        # Gợi ý dựa trên entity thiếu
-        if job_evaluation.get('total_score', 0) < 80:
-            suggestions.append("Hãy bổ sung thêm các kỹ năng chuyên môn liên quan đến ngành nghề.")
-            suggestions.append("Mô tả chi tiết hơn về kinh nghiệm làm việc.")
-            suggestions.append("Thêm các chứng chỉ hoặc bằng cấp liên quan.")
+        # Gợi ý từ ML insights
+        if ml_insights.get('ml_suggestions'):
+            suggestions.extend(ml_insights['ml_suggestions'])
         
-        # Gợi ý dựa trên cấu trúc CV
-        if not parsed_cv.skills:
-            suggestions.append("Bổ sung mục 'Kỹ năng' với các kỹ năng chuyên môn.")
+        # Gợi ý từ quality analysis
+        if quality_analysis.get('quality_score', 0) < 0.75:
+            suggestions.append("Cải thiện cấu trúc CV với các mục rõ ràng")
+        
+        # Gợi ý từ skills matching
+        if jd_skills:
+            cv_skills_set = set(parsed_cv.skills)
+            jd_skills_set = set(jd_skills)
+            missing_skills = jd_skills_set - cv_skills_set
+            
+            if missing_skills:
+                suggestions.append(f"Bổ sung các kỹ năng: {', '.join(list(missing_skills)[:3])}")
+        
+        # Gợi ý từ parsed CV
+        if not parsed_cv.summary:
+            suggestions.append("Thêm phần tóm tắt/mục tiêu nghề nghiệp")
         
         if not parsed_cv.experience:
-            suggestions.append("Thêm mục 'Kinh nghiệm làm việc' với các vị trí đã từng đảm nhiệm.")
+            suggestions.append("Bổ sung thông tin kinh nghiệm làm việc")
         
-        if not parsed_cv.education:
-            suggestions.append("Bổ sung thông tin về học vấn và bằng cấp.")
-        
-        if not parsed_cv.summary:
-            suggestions.append("Thêm phần tóm tắt hoặc mục tiêu nghề nghiệp.")
-        
-        # Gợi ý từ ML insights
-        if ml_insights.get('important_features_missing'):
-            suggestions.append(f"Bổ sung các từ khóa quan trọng: {', '.join(ml_insights['important_features_missing'][:5])}")
-        
-        if ml_insights.get('predicted_job') and ml_insights.get('predicted_job') != job_evaluation.get('job_category'):
-            suggestions.append(f"Xem xét ngành nghề: {ml_insights['predicted_job']} (AI gợi ý)")
-        
-        # Gợi ý chung
-        if not suggestions:
-            suggestions.append("CV của bạn khá tốt, hãy tự tin ứng tuyển!")
-        else:
-            suggestions.append("Hãy tùy chỉnh CV để nhấn mạnh sự phù hợp với từng vị trí cụ thể.")
-        
-        return suggestions
+        return suggestions[:5]  # Giới hạn 5 gợi ý
 
 # Test function
 if __name__ == "__main__":
@@ -398,9 +603,18 @@ if __name__ == "__main__":
     KỸ NĂNG
     - Excel, Word, PowerPoint
     - Phần mềm kế toán
-    - Báo cáo tài chính
-    - Quản lý sổ sách
+    - Kế toán tài chính
     """
     
-    result = service.evaluate_cv_comprehensive(sample_cv, "ACCOUNTANT")
-    print(json.dumps(result, ensure_ascii=False, indent=2)) 
+    sample_jd = """
+    Tuyển dụng Kế toán viên
+    Yêu cầu:
+    - Kinh nghiệm kế toán
+    - Thành thạo Excel
+    - Biết sử dụng phần mềm kế toán
+    """
+    
+    result = service.evaluate_cv_comprehensive(sample_cv, "FINANCE", sample_jd)
+    print(f"Điểm tổng: {result['overall_score']}")
+    print(f"Feedback: {result['feedback']}")
+    print(f"Suggestions: {result['suggestions']}") 

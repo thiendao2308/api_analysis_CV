@@ -56,7 +56,7 @@ e. **Khởi động server backend:**
 
 ```bash
 uvicorn ml_architecture.main:app --host 0.0.0.0 --port 8000 --reload
-doccano createuser --username admin --password admin123 --email admin@example.com
+doccano webserver --port 8000
 ```
 
 Server sẽ chạy tại `http://localhost:8000`.

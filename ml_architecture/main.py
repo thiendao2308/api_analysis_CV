@@ -1,25 +1,34 @@
-from fastapi import FastAPI, UploadFile, File, Form, HTTPException
-from fastapi.middleware.cors import CORSMiddleware
-from typing import Optional
-from pydantic import BaseModel
-import uvicorn
+import os
+import sys
 import logging
 import traceback
+from typing import Optional
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body
+from fastapi.middleware.cors import CORSMiddleware
+from pydantic import BaseModel
 
-from .services.file_processor import process_cv_file
-from .models.cv_jd_matcher import DetailedCVAnalyzer
-from .models.cv_analyzer import CVAnalysisResult
+# Add the ml_architecture directory to the Python path
+sys.path.append(os.path.join(os.path.dirname(__file__), 'ml_architecture'))
 
-# Cấu hình logging
-logging.basicConfig(
-    level=logging.INFO,
-    format='%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-)
+from ml_architecture.services.cv_evaluation_service import CVEvaluationService
+from ml_architecture.models.shared_models import CVAnalysisResult
+from ml_architecture.services.llm_extractor import LLMExtractor
+llm_extractor = LLMExtractor()
+from ml_architecture.services.llm_extractor import LLMExtractor
+
+llm_extractor = LLMExtractor()  # Khởi tạo 1 lần khi start server
+
+# Configure logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-app = FastAPI(title="AI CV Analyzer")
+app = FastAPI(
+    title="CV Analysis API",
+    description="API for analyzing CVs and matching with job descriptions",
+    version="1.0.0"
+)
 
-# CORS middleware
+# Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
     allow_origins=["*"],
@@ -28,20 +37,81 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Khởi tạo analyzer một lần khi server khởi động để tối ưu hiệu năng
-# Tránh việc phải tải lại model SpaCy cho mỗi request
-try:
-    analyzer = DetailedCVAnalyzer()
-    logger.info("DetailedCVAnalyzer đã được khởi tạo thành công.")
-except Exception as e:
-    logger.error(f"LỖI NGHIÊM TRỌNG: Không thể khởi tạo DetailedCVAnalyzer. Server có thể không hoạt động đúng. Lỗi: {e}")
-    analyzer = None
+# Initialize the CV analyzer
+analyzer = None
+
+@app.on_event("startup")
+async def startup_event():
+    """Initialize the CV analyzer on startup"""
+    global analyzer
+    try:
+        analyzer = CVEvaluationService()
+        logger.info("✅ CV Analyzer initialized successfully")
+    except Exception as e:
+        logger.error(f"❌ Failed to initialize CV Analyzer: {e}")
+        analyzer = None
+
+async def process_cv_file(cv_file: UploadFile) -> str:
+    """Process CV file and extract text content"""
+    try:
+        # Read file content
+        content = await cv_file.read()
+        
+        # Check file type and process accordingly
+        file_extension = cv_file.filename.lower().split('.')[-1] if cv_file.filename else ''
+        
+        if file_extension == 'pdf':
+            # For PDF files, try to extract text with better error handling
+            try:
+                import PyPDF2
+                import io
+                pdf_reader = PyPDF2.PdfReader(io.BytesIO(content))
+                cv_text = ""
+                for page in pdf_reader.pages:
+                    try:
+                        page_text = page.extract_text()
+                        if page_text:
+                            cv_text += page_text + "\n"
+                    except Exception as page_error:
+                        logger.warning(f"Error extracting text from page: {page_error}")
+                        continue
+                return cv_text.strip() if cv_text.strip() else "PDF content could not be extracted"
+            except Exception as pdf_error:
+                logger.warning(f"PDF parsing failed: {pdf_error}, trying alternative method")
+                try:
+                    # Try alternative PDF parsing
+                    import fitz  # PyMuPDF
+                    doc = fitz.open(stream=content, filetype="pdf")
+                    cv_text = ""
+                    for page in doc:
+                        cv_text += page.get_text() + "\n"
+                    doc.close()
+                    return cv_text.strip() if cv_text.strip() else "PDF content could not be extracted"
+                except ImportError:
+                    logger.warning("PyMuPDF not available")
+                except Exception as fitz_error:
+                    logger.warning(f"PyMuPDF parsing failed: {fitz_error}")
+                
+                # Fallback: return a placeholder text
+                return "PDF content could not be extracted. Please try uploading a text file instead."
+        elif file_extension in ['txt', 'docx']:
+            # For text files, decode as UTF-8 with error handling
+            return content.decode('utf-8', errors='ignore')
+        else:
+            # Default: try to decode as text
+            return content.decode('utf-8', errors='ignore')
+            
+    except Exception as e:
+        logger.error(f"Error processing CV file: {e}")
+        raise HTTPException(status_code=400, detail=f"Error processing CV file: {str(e)}")
 
 @app.post("/analyze-cv", response_model=CVAnalysisResult)
 async def analyze_cv(
     cv_file: UploadFile = File(...),
+    job_category: str = Form(...),
+    job_position: str = Form(...),
     jd_text: str = Form(...),
-    job_requirements: Optional[str] = Form(None)
+    job_requirements: str = Form(None)
 ):
     """
     Phân tích CV từ file và đánh giá mức độ phù hợp với JD/JR
@@ -65,19 +135,32 @@ async def analyze_cv(
                 detail=f"Lỗi không thể xử lý file CV: {str(e)}"
             )
 
-        if not cv_content or not jd_text:
+        if not cv_content:
             raise HTTPException(
                 status_code=400,
-                detail="Nội dung CV hoặc Mô tả công việc không được để trống"
+                detail="Nội dung CV không được để trống"
             )
+
+        # LLM extraction cho CV và JD
+        llm_cv_result = llm_extractor.extract(cv_content)
+        llm_jd_result = llm_extractor.extract(jd_text)
+
+        # Ghi log kết quả LLM extraction
+        logging.info("[LLM Extraction] CV: %s", llm_cv_result)
+        logging.info("[LLM Extraction] JD: %s", llm_jd_result)
 
         # Phân tích CV với JD bằng bộ phân tích chi tiết mới
         try:
-            logger.info("Bắt đầu phân tích chi tiết CV và JD/JR...")
-            analysis_result = analyzer.analyze(
-                cv_content=cv_content,
+            logger.info("Bắt đầu phân tích chi tiết CV và JD...")
+            logger.info(f"Job Category: {job_category}")
+            logger.info(f"Job Position: {job_position}")
+            
+            analysis_result = analyzer.evaluate_cv_comprehensive(
+                cv_text=cv_content,
+                job_category=job_category,
+                job_position=job_position,
                 jd_text=jd_text,
-                jr_text=job_requirements
+                job_requirements=job_requirements
             )
             logger.info("Phân tích chi tiết hoàn tất.")
         except Exception as e:
@@ -95,15 +178,69 @@ async def analyze_cv(
         logger.error(f"Lỗi không xác định: {str(e)}\n{traceback.format_exc()}")
         raise HTTPException(
             status_code=500,
-            detail=f"Lỗi không xác định: {str(e)}"
+            detail=f"Lỗi server: {str(e)}"
         )
+
+@app.post("/analyze-jd")
+async def analyze_jd(jd_text: str = Form(...)):
+    """
+    Phân tích JD và trích xuất skills
+    """
+    if not analyzer:
+        raise HTTPException(
+            status_code=500,
+            detail="Lỗi server: CV Analyzer không khả dụng."
+        )
+    
+    try:
+        # Trích xuất skills từ JD
+        jd_skills = analyzer.extract_jd_skills(jd_text)
+        
+        # Phân tích chi tiết JD
+        from ml_architecture.data.jd_analysis_system import JDAnalysisSystem
+        jd_analyzer = JDAnalysisSystem()
+        jd_analysis = jd_analyzer.analyze_single_jd(jd_text)
+        
+        return {
+            "jd_text": jd_text,
+            "extracted_skills": jd_skills,
+            "analysis": jd_analysis
+        }
+    except Exception as e:
+        logger.error(f"Lỗi khi phân tích JD: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi khi phân tích JD: {str(e)}"
+        )
+
+@app.post("/llm_extract")
+def llm_extract_endpoint(text: str = Body(..., embed=True)):
+    """
+    Extracts experience, education, projects, certifications, and skills from input text using TinyLlama LLM.
+    """
+    return llm_extractor.extract(text)
 
 @app.get("/health")
 async def health_check():
-    """
-    Kiểm tra trạng thái hoạt động của server
-    """
-    return {"status": "healthy"}
+    """Health check endpoint"""
+    return {
+        "status": "healthy",
+        "analyzer_available": analyzer is not None
+    }
+
+@app.get("/")
+async def root():
+    """Root endpoint"""
+    return {
+        "message": "CV Analysis API",
+        "version": "1.0.0",
+        "endpoints": {
+            "analyze_cv": "/analyze-cv",
+            "analyze_jd": "/analyze-jd",
+            "health": "/health"
+        }
+    }
 
 if __name__ == "__main__":
-    uvicorn.run("main:app", host="0.0.0.0", port=8000, reload=True) 
+    import uvicorn
+    uvicorn.run(app, host="0.0.0.0", port=8000) 

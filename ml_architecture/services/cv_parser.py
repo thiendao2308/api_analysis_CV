@@ -1,193 +1,414 @@
-import logging
 import re
 import spacy
-from typing import Dict, List
+from typing import Dict, List, Optional, Tuple
+import PyPDF2
+import fitz  # PyMuPDF
+from docx import Document
+import logging
 
-from ..models.shared_models import ParsedCV
-
+# Cấu hình logging
+logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger(__name__)
 
-class CVParser:
-    """
-    Phân tích một CV dạng văn bản thô để trích xuất các thông tin có cấu trúc như
-    tóm tắt, kỹ năng, kinh nghiệm và học vấn.
-    """
-    def __init__(self, model_name="vi_core_news_lg"):
-        """
-        Khởi tạo CVParser với mô hình SpaCy.
-        Tự động fallback sang mô hình tiếng Anh nếu mô hình tiếng Việt không có sẵn.
-        """
-        self.nlp = self._load_spacy_model(model_name)
-        self.section_keywords = {
-            "tóm tắt": r"(mục tiêu nghề nghiệp|giới thiệu|tóm tắt|mục tiêu|summary)",
-            "kỹ năng": r"(kỹ năng|chuyên môn|trình độ chuyên môn|skills|technical skills)",
-            "kinh nghiệm làm việc": r"(kinh nghiệm làm việc|kinh nghiệm|lịch sử công việc|experience)",
-            "học vấn": r"(học vấn|giáo dục|trình độ học vấn|education)",
-        }
-        self.section_regex = self._compile_section_regex()
-
-    def _compile_section_regex(self) -> re.Pattern:
-        """Tạo một biểu thức chính quy để tìm các tiêu đề mục trong CV."""
-        all_patterns = "|".join(self.section_keywords.values())
-        return re.compile(r"^\s*(" + all_patterns + r")\s*:?\s*$", re.IGNORECASE | re.MULTILINE)
-
-    def _load_spacy_model(self, primary_model: str, fallback_model: str = "en_core_web_sm"):
-        """Tải mô hình SpaCy, ưu tiên mô hình chính và fallback nếu cần."""
-        try:
-            logger.info(f"Đang thử tải mô hình chính: '{primary_model}'...")
-            return spacy.load(primary_model)
-        except OSError:
-            logger.warning(f"Không tìm thấy mô hình chính '{primary_model}'.")
-            logger.info(f"Đang thử tải mô hình dự phòng: '{fallback_model}'...")
-            try:
-                return spacy.load(fallback_model)
-            except OSError:
-                logger.error(f"Không tìm thấy cả mô hình dự phòng '{fallback_model}'.")
-                return None
-
-    def _extract_sections(self, text: str) -> Dict[str, str]:
-        """Phân chia văn bản CV thành các phần chính dựa trên các tiêu đề."""
-        logger.info("Đang phân chia CV thành các mục...")
-        sections = {}
-        matches = list(self.section_regex.finditer(text))
-        last_pos = 0
-
-        for i, match in enumerate(matches):
-            section_title_text = match.group(1).lower()
-            content_start = match.end()
-            content_end = matches[i + 1].start() if i + 1 < len(matches) else len(text)
-            
-            section_content = text[content_start:content_end].strip()
-
-            # Tìm tên mục chuẩn hóa (ví dụ: 'kinh nghiệm làm việc' -> 'kinh nghiệm làm việc')
-            for key, pattern in self.section_keywords.items():
-                if re.search(pattern, section_title_text, re.IGNORECASE):
-                    sections[key] = section_content
-                    break
+class IntelligentCVParser:
+    def __init__(self):
+        """Khởi tạo parser với các pattern và rules thông minh"""
+        self.nlp = spacy.load("en_core_web_sm")
         
-        logger.info(f"Các mục đã được nhận diện từ CV: {list(sections.keys())}")
+        # Patterns để nhận diện job title
+        self.job_title_patterns = [
+            r"(?i)(frontend|front-end|front end)\s+(developer|dev)",
+            r"(?i)(backend|back-end|back end)\s+(developer|dev)",
+            r"(?i)(fullstack|full-stack|full stack)\s+(developer|dev)",
+            r"(?i)(mobile|android|ios)\s+(developer|dev)",
+            r"(?i)(data\s+scientist|data\s+analyst)",
+            r"(?i)(devops|cloud)\s+(engineer|dev)",
+            r"(?i)(qa|quality|test)\s+(engineer|analyst)",
+            r"(?i)(ui|ux|user\s+interface)\s+(designer|developer)",
+            r"(?i)(system|network)\s+(admin|administrator)",
+            r"(?i)(cyber|security)\s+(specialist|engineer)",
+            r"(?i)(marketing|digital\s+marketing|seo)\s+(specialist|manager)",
+            r"(?i)(sales|business)\s+(representative|manager|director)",
+            r"(?i)(hr|human\s+resources)\s+(specialist|manager)",
+            r"(?i)(accountant|auditor|financial)\s+(specialist|manager)",
+            r"(?i)(teacher|professor|educator)",
+            r"(?i)(doctor|nurse|pharmacist|medical)",
+            r"(?i)(lawyer|legal|attorney)",
+            r"(?i)(consultant|advisor)",
+            r"(?i)(designer|graphic|web|product)\s+(designer)",
+        ]
+        
+        # Keywords để nhận diện sections
+        self.section_keywords = {
+            "experience": [
+                "experience", "work experience", "employment", "career", "professional",
+                "kinh nghiệm", "kinh nghiệm làm việc", "nghề nghiệp", "công việc"
+            ],
+            "education": [
+                "education", "academic", "degree", "university", "college", "school",
+                "học vấn", "bằng cấp", "đại học", "trường học", "tốt nghiệp"
+            ],
+            "skills": [
+                "skills", "technical skills", "competencies", "abilities", "proficiencies",
+                "kỹ năng", "kỹ năng kỹ thuật", "năng lực", "khả năng"
+            ],
+            "projects": [
+                "projects", "portfolio", "achievements", "accomplishments",
+                "dự án", "danh mục", "thành tựu", "kết quả"
+            ],
+            "certifications": [
+                "certifications", "certificates", "licenses", "accreditations",
+                "chứng chỉ", "giấy phép", "chứng nhận"
+            ]
+        }
+        
+        # Skills mapping theo ngành nghề
+        self.skills_by_category = {
+            "INFORMATION-TECHNOLOGY": [
+                "python", "java", "javascript", "react", "angular", "vue", "node.js",
+                "django", "flask", "spring", "sql", "mongodb", "postgresql", "mysql",
+                "aws", "azure", "docker", "kubernetes", "git", "jenkins", "jira",
+                "html", "css", "sass", "typescript", "php", "c#", ".net", "ruby",
+                "go", "rust", "swift", "kotlin", "android", "ios", "flutter",
+                "machine learning", "ai", "data science", "big data", "hadoop",
+                "spark", "tensorflow", "pytorch", "scikit-learn", "pandas", "numpy"
+            ],
+            "MARKETING": [
+                "digital marketing", "seo", "sem", "google ads", "facebook ads",
+                "social media", "content marketing", "email marketing", "analytics",
+                "google analytics", "facebook pixel", "conversion optimization",
+                "brand management", "market research", "customer acquisition",
+                "lead generation", "sales funnel", "crm", "hubspot", "mailchimp"
+            ],
+            "FINANCE": [
+                "financial analysis", "accounting", "bookkeeping", "auditing",
+                "tax preparation", "budgeting", "forecasting", "investment",
+                "risk management", "compliance", "quickbooks", "excel", "sap",
+                "oracle", "financial modeling", "valuation", "mergers", "acquisitions"
+            ],
+            "SALES": [
+                "sales", "business development", "account management", "lead generation",
+                "prospecting", "negotiation", "closing", "crm", "salesforce",
+                "pipeline management", "territory management", "customer relationship",
+                "presentation", "communication", "cold calling", "sales strategy"
+            ],
+            "HR": [
+                "recruitment", "talent acquisition", "hiring", "interviewing",
+                "onboarding", "employee relations", "performance management",
+                "compensation", "benefits", "training", "development", "hr policies",
+                "workday", "bamboo hr", "adp", "payroll", "compliance", "diversity"
+            ]
+        }
+
+    def extract_text_from_file(self, file_path: str) -> str:
+        """Trích xuất text từ file CV (PDF, DOCX, TXT)"""
+        try:
+            if file_path.lower().endswith('.pdf'):
+                return self._extract_from_pdf(file_path)
+            elif file_path.lower().endswith('.docx'):
+                return self._extract_from_docx(file_path)
+            elif file_path.lower().endswith('.txt'):
+                return self._extract_from_txt(file_path)
+            else:
+                raise ValueError(f"Unsupported file format: {file_path}")
+        except Exception as e:
+            logger.error(f"Error extracting text from {file_path}: {str(e)}")
+            return ""
+
+    def _extract_from_pdf(self, file_path: str) -> str:
+        """Trích xuất text từ PDF với fallback methods"""
+        text = ""
+        
+        # Thử PyMuPDF trước (tốt hơn cho layout phức tạp)
+        try:
+            doc = fitz.open(file_path)
+            for page in doc:
+                text += page.get_text()
+            doc.close()
+            if text.strip():
+                return text
+        except Exception as e:
+            logger.warning(f"PyMuPDF failed: {e}")
+        
+        # Fallback to PyPDF2
+        try:
+            with open(file_path, 'rb') as file:
+                reader = PyPDF2.PdfReader(file)
+                for page in reader.pages:
+                    text += page.extract_text() + "\n"
+            return text
+        except Exception as e:
+            logger.error(f"PyPDF2 failed: {e}")
+            return ""
+
+    def _extract_from_docx(self, file_path: str) -> str:
+        """Trích xuất text từ DOCX"""
+        try:
+            doc = Document(file_path)
+            text = ""
+            for paragraph in doc.paragraphs:
+                text += paragraph.text + "\n"
+            return text
+        except Exception as e:
+            logger.error(f"Error extracting from DOCX: {e}")
+            return ""
+
+    def _extract_from_txt(self, file_path: str) -> str:
+        """Trích xuất text từ TXT"""
+        try:
+            with open(file_path, 'r', encoding='utf-8') as file:
+                return file.read()
+        except Exception as e:
+            logger.error(f"Error extracting from TXT: {e}")
+            return ""
+
+    def extract_job_title(self, text: str) -> Optional[str]:
+        """Trích xuất job title thông minh từ CV"""
+        lines = text.split('\n')
+        
+        # Tìm trong 10 dòng đầu (thường job title ở đầu CV)
+        for i, line in enumerate(lines[:10]):
+            line = line.strip()
+            if not line:
+                continue
+                
+            # Kiểm tra các pattern
+            for pattern in self.job_title_patterns:
+                match = re.search(pattern, line, re.IGNORECASE)
+                if match:
+                    return match.group(0).strip()
+            
+            # Kiểm tra các từ khóa job title đơn giản
+            job_keywords = [
+                "developer", "engineer", "manager", "specialist", "analyst",
+                "designer", "consultant", "advisor", "coordinator", "assistant",
+                "director", "supervisor", "lead", "senior", "junior"
+            ]
+            
+            words = line.lower().split()
+            for word in words:
+                if word in job_keywords:
+                    return line.strip()
+        
+        return None
+
+    def extract_sections(self, text: str) -> Dict[str, str]:
+        """Trích xuất các section từ CV"""
+        sections = {}
+        lines = text.split('\n')
+        current_section = None
+        current_content = []
+        
+        for line in lines:
+            line = line.strip()
+            if not line:
+                continue
+            
+            # Kiểm tra xem line có phải là section header không
+            section_found = False
+            for section_name, keywords in self.section_keywords.items():
+                for keyword in keywords:
+                    if keyword.lower() in line.lower():
+                        # Lưu section trước đó
+                        if current_section and current_content:
+                            sections[current_section] = '\n'.join(current_content)
+                        
+                        # Bắt đầu section mới
+                        current_section = section_name
+                        current_content = [line]
+                        section_found = True
+                        break
+                if section_found:
+                    break
+            
+            # Nếu không phải header, thêm vào content hiện tại
+            if not section_found and current_section:
+                current_content.append(line)
+        
+        # Lưu section cuối cùng
+        if current_section and current_content:
+            sections[current_section] = '\n'.join(current_content)
+        
         return sections
 
-    def _extract_skills_from_section(self, section_text: str) -> List[str]:
-        """Trích xuất danh sách kỹ năng từ một phần văn bản."""
-        logger.info("Đang trích xuất kỹ năng từ mục (logic cải tiến)...")
-        text_without_headings = re.sub(r'[^:\n]+:\s*', '', section_text)
-        potential_skills = re.split(r'\n|,|&|\s-\s|\s\*\s|\s•\s', text_without_headings)
-        
-        cleaned_skills = []
-        for skill in potential_skills:
-            s = skill.strip().rstrip('.').strip()
-            if s and len(s) > 1 and len(s.split()) < 5: # Chấp nhận kỹ năng dài hơn một chút
-                cleaned_skills.append(s)
-        
-        logger.info(f"Các kỹ năng sau khi được dọn dẹp: {cleaned_skills}")
-        return list(set(cleaned_skills))
-
-    def parse(self, text: str) -> ParsedCV:
-        """
-        Phân tích toàn bộ văn bản CV và trả về dữ liệu có cấu trúc.
-        """
-        logger.info("==================================================")
-        logger.info("BẮT ĐẦU PHIÊN PHÂN TÍCH CV MỚI")
-        logger.info(f"Nội dung CV nhận được (500 ký tự đầu):\n---\n{text[:500]}\n---")
-        
-        sections = self._extract_sections(text)
-        
+    def extract_skills(self, text: str, job_category: str = None) -> List[str]:
+        """Trích xuất skills từ CV"""
         skills = []
-        if "kỹ năng" in sections:
-            skills = self._extract_skills_from_section(sections["kỹ năng"])
-
-        # Sử dụng .get() để an toàn lấy nội dung, mặc định trả về None nếu không có
-        summary = sections.get("tóm tắt")
-        experience = sections.get("kinh nghiệm làm việc")
-        education = sections.get("học vấn")
         
-        logger.info(f"Các kỹ năng đã bóc tách được: {skills}")
-        logger.info("KẾT THÚC PHIÊN PHÂN TÍCH CV")
-        logger.info("==================================================")
+        # Tìm trong section skills
+        sections = self.extract_sections(text)
+        skills_section = sections.get('skills', '')
+        
+        # Tách skills từ skills section
+        if skills_section:
+            # Tách theo dấu phẩy, chấm phẩy, gạch đầu dòng
+            skill_patterns = [
+                r'[•\-\*]\s*([^,\n]+)',
+                r'([^,\n]+)(?=,|;|\n)',
+                r'([^,\n]+)'
+            ]
+            
+            for pattern in skill_patterns:
+                matches = re.findall(pattern, skills_section, re.IGNORECASE)
+                for match in matches:
+                    skill = match.strip()
+                    if len(skill) > 2 and skill.lower() not in ['and', 'or', 'the', 'with']:
+                        skills.append(skill)
+        
+        # Tìm skills trong toàn bộ text
+        if job_category and job_category in self.skills_by_category:
+            category_skills = self.skills_by_category[job_category]
+            for skill in category_skills:
+                if re.search(rf'\b{re.escape(skill)}\b', text, re.IGNORECASE):
+                    if skill not in skills:
+                        skills.append(skill)
+        
+        return list(set(skills))  # Loại bỏ duplicates
 
-        return ParsedCV(
-            summary=summary,
-            skills=skills,
-            experience=experience,
-            education=education
-        )
+    def extract_experience(self, text: str) -> List[Dict]:
+        """Trích xuất kinh nghiệm làm việc"""
+        experience = []
+        sections = self.extract_sections(text)
+        exp_section = sections.get('experience', '')
+        
+        if not exp_section:
+            return experience
+        
+        # Tìm các block kinh nghiệm
+        exp_blocks = re.split(r'\n\s*\n', exp_section)
+        
+        for block in exp_blocks:
+            if not block.strip():
+                continue
+                
+            # Tìm job title, company, duration
+            lines = block.split('\n')
+            if len(lines) >= 2:
+                job_info = {
+                    'title': lines[0].strip(),
+                    'company': '',
+                    'duration': '',
+                    'description': '\n'.join(lines[1:]).strip()
+                }
+                
+                # Tìm company và duration trong dòng thứ 2
+                if len(lines) >= 2:
+                    second_line = lines[1]
+                    # Pattern: Company Name | Duration
+                    company_duration = re.match(r'(.+?)\s*[|–-]\s*(.+)', second_line)
+                    if company_duration:
+                        job_info['company'] = company_duration.group(1).strip()
+                        job_info['duration'] = company_duration.group(2).strip()
+                    else:
+                        job_info['company'] = second_line.strip()
+                
+                experience.append(job_info)
+        
+        return experience
 
-    def _load_model(self, model_path: str):
-        """
-        Tải mô hình SpaCy từ đường dẫn đến file mô hình.
-        """
+    def extract_education(self, text: str) -> List[Dict]:
+        """Trích xuất thông tin học vấn"""
+        education = []
+        sections = self.extract_sections(text)
+        edu_section = sections.get('education', '')
+        
+        if not edu_section:
+            return education
+        
+        # Tìm các block education
+        edu_blocks = re.split(r'\n\s*\n', edu_section)
+        
+        for block in edu_blocks:
+            if not block.strip():
+                continue
+                
+            lines = block.split('\n')
+            if len(lines) >= 2:
+                edu_info = {
+                    'degree': lines[0].strip(),
+                    'school': '',
+                    'year': '',
+                    'description': '\n'.join(lines[1:]).strip()
+                }
+                
+                # Tìm school và year
+                if len(lines) >= 2:
+                    second_line = lines[1]
+                    # Pattern: School Name | Year
+                    school_year = re.match(r'(.+?)\s*[|–-]\s*(.+)', second_line)
+                    if school_year:
+                        edu_info['school'] = school_year.group(1).strip()
+                        edu_info['year'] = school_year.group(2).strip()
+                    else:
+                        edu_info['school'] = second_line.strip()
+                
+                education.append(edu_info)
+        
+        return education
+
+    def extract_projects(self, text: str) -> List[Dict]:
+        """Trích xuất thông tin dự án"""
+        projects = []
+        sections = self.extract_sections(text)
+        proj_section = sections.get('projects', '')
+        
+        if not proj_section:
+            return projects
+        
+        # Tìm các block project
+        proj_blocks = re.split(r'\n\s*\n', proj_section)
+        
+        for block in proj_blocks:
+            if not block.strip():
+                continue
+                
+            lines = block.split('\n')
+            if len(lines) >= 2:
+                proj_info = {
+                    'name': lines[0].strip(),
+                    'description': '\n'.join(lines[1:]).strip()
+                }
+                projects.append(proj_info)
+        
+        return projects
+
+    def parse_cv(self, file_path: str, job_category: str = None) -> Dict:
+        """Parse CV và trả về thông tin chi tiết"""
         try:
-            logger.info(f"Đang tải mô hình từ đường dẫn: '{model_path}'...")
-            return spacy.load(model_path)
-        except OSError:
-            logger.error(f"Không tìm thấy mô hình từ đường dẫn '{model_path}'.")
-            logger.info(f"CVParser sẽ hoạt động ở chế độ cơ bản. Vui lòng chạy 'python -m spacy download {model_path}'")
-            return None
+            # Trích xuất text
+            text = self.extract_text_from_file(file_path)
+            if not text:
+                return {"error": "Không thể trích xuất text từ file"}
+            
+            # Trích xuất các thông tin
+            job_title = self.extract_job_title(text)
+            sections = self.extract_sections(text)
+            skills = self.extract_skills(text, job_category)
+            experience = self.extract_experience(text)
+            education = self.extract_education(text)
+            projects = self.extract_projects(text)
+            
+            return {
+                "raw_text": text,
+                "job_title": job_title,
+                "sections": sections,
+                "skills": skills,
+                "experience": experience,
+                "education": education,
+                "projects": projects,
+                "parsed_successfully": True
+            }
+            
+        except Exception as e:
+            logger.error(f"Error parsing CV: {str(e)}")
+            return {
+                "error": f"Lỗi khi parse CV: {str(e)}",
+                "parsed_successfully": False
+            }
 
-# --- Ví dụ sử dụng ---
-if __name__ == '__main__':
-    # You need to have 'vi_core_news_lg' downloaded
-    # python -m spacy download vi_core_news_lg
-    parser = CVParser()
-    sample_cv = """
-    NGUYỄN VĂN A
-    Email: nva@email.com | Phone: 0123456789
+# Tạo instance global
+cv_parser = IntelligentCVParser()
 
-    MỤC TIÊU NGHỀ NGHIỆP
-    Trở thành một lập trình viên Python chuyên nghiệp.
-
-    KINH NGHIỆM LÀM VIỆC
-    Công ty ABC (01/2020 - Hiện tại)
-    Lập trình viên Python
-    - Xây dựng hệ thống backend sử dụng Django.
-    - Tối ưu hóa hiệu năng database.
-
-    HỌC VẤN
-    Đại học XYZ (2016 - 2020)
-    Chuyên ngành: Khoa học máy tính
-
-    KỸ NĂNG
-    - Ngôn ngữ: Python, Java
-    - Framework: Django, Spring
-    - Database: PostgreSQL
-    """
-    
-    parsed_data = parser.parse(sample_cv)
-    print("--- Dữ liệu CV đã được bóc tách ---")
-    print(parsed_data.model_dump_json(indent=2, ensure_ascii=False))
-
-    # Test với một CV phức tạp hơn
-    complex_cv = """
-    TRẦN THỊ B
-    Email: ttb@gmail.com
-
-    TÓM TẮT
-    Software Engineer với 3 năm kinh nghiệm làm việc với Python và các framework web.
-    
-    KINH NGHIỆM LÀM VIỆC
-
-    Công ty Cổ phần Giải pháp Nhanh (05/2021 - Hiện tại)
-    Software Engineer
-    - Phát triển các tính năng mới cho sản phẩm X sử dụng Flask.
-    - Làm việc với Docker và Kubernetes để triển khai.
-    - Tối ưu truy vấn PostgreSQL.
-
-    Công ty Z (01/2020 - 04/2021)
-    Junior Developer
-    - Hỗ trợ team trong việc maintain code base.
-    - Viết unit test.
-
-    HỌC VẤN
-    Đại học Bách Khoa TPHCM (2016 - 2020)
-    Bằng cấp: Kỹ sư
-    Chuyên ngành: Khoa học Máy tính
-
-    KỸ NĂNG
-    - Python, JavaScript
-    - Flask, React
-    - Docker, AWS
-    """
-    print("\n--- Test với CV phức tạp hơn ---")
-    parsed_complex_cv = parser.parse(complex_cv)
-    print(parsed_complex_cv.model_dump_json(indent=2, ensure_ascii=False)) 
+def parse_cv_file(file_path: str, job_category: str = None) -> Dict:
+    """Wrapper function để parse CV file"""
+    return cv_parser.parse_cv(file_path, job_category) 
