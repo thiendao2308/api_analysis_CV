@@ -170,7 +170,7 @@ class CVEvaluationService:
         except Exception as e:
             print(f"BƯỚC 2: Lỗi khi trích xuất skills từ JD: {e}")
             return []
-
+    
     def _load_trained_model(self):
         """Load mô hình đã train và trích xuất feature importance"""
         try:
@@ -216,7 +216,7 @@ class CVEvaluationService:
         except Exception as e:
             print(f"❌ Lỗi khi lấy important features: {e}")
             return []
-
+    
     def _analyze_cv_with_ml_insights(self, cv_text: str, job_category: str) -> Dict:
         """BƯỚC 3: Phân tích CV với ML insights"""
         ml_insights = {
@@ -254,11 +254,41 @@ class CVEvaluationService:
                 ml_insights['ml_suggestions'].append(
                     f"⚠️ Cần bổ sung: {', '.join(missing_features[:3])}"
                 )
-                
+            
         except Exception as e:
             print(f"❌ Lỗi khi phân tích ML insights: {e}")
         
         return ml_insights
+    
+    @staticmethod
+    def _normalize_skill(skill):
+        return skill.strip().lower()
+
+    def _extract_skills_hybrid(self, text, job_category=None, is_cv=True):
+        # ML extraction
+        if is_cv:
+            skills_ml = self.cv_parser.extract_skills(text, job_category)
+        else:
+            skills_ml = self.extract_jd_skills(text)
+        # LLM extraction
+        skills_llm = []
+        # Nếu là JD, gọi OpenAI API để trích xuất skills (nếu có API key)
+        if not is_cv:
+            try:
+                from ml_architecture.services.llm_api_extractor_jd import extract_skills_from_jd
+                skills_llm_str = extract_skills_from_jd(text)
+                if isinstance(skills_llm_str, str):
+                    skills_llm = [s.strip() for s in skills_llm_str.split(",") if s.strip()]
+            except Exception as e:
+                print(f"[Hybrid JD] Lỗi khi gọi OpenAI API: {e}")
+        # Union, loại trùng, chuẩn hóa
+        all_skills = set(self._normalize_skill(s) for s in skills_ml) | set(self._normalize_skill(s) for s in skills_llm)
+        # Trả về dạng chuẩn hóa (capitalize)
+        return {
+            "skills_ml": sorted(set(skills_ml)),
+            "skills_llm": sorted(set(skills_llm)),
+            "skills_union": sorted(s.capitalize() for s in all_skills if s)
+        }
 
     def evaluate_cv_comprehensive(self, cv_text: str, job_category: str, job_position: str = None, jd_text: str = None, job_requirements: str = None) -> Dict:
         """
@@ -287,61 +317,53 @@ class CVEvaluationService:
                 if os.path.exists(temp_file_path):
                     os.unlink(temp_file_path)
             
-            # BƯỚC 2: Phân tích JD và trích xuất skills
-            jd_skills = []
+            # BƯỚC 2: Phân tích JD và trích xuất skills (hybrid)
+            jd_skills_hybrid = {"skills_ml": [], "skills_llm": [], "skills_union": []}
             if jd_text:
-                jd_skills = self.extract_jd_skills(jd_text)
-                print(f"✅ BƯỚC 2: Trích xuất {len(jd_skills)} skills từ JD")
-            
-            # BƯỚC 3: So sánh CV-JD
-            cv_skills = parsed_cv.get('skills', [])
+                jd_skills_hybrid = self._extract_skills_hybrid(jd_text, job_category, is_cv=False)
+                print(f"✅ BƯỚC 2: Trích xuất {len(jd_skills_hybrid['skills_union'])} skills (hybrid) từ JD")
+            # BƯỚC 3: Trích xuất skills từ CV (hybrid)
+            cv_skills_hybrid = self._extract_skills_hybrid(cv_text, job_category, is_cv=True)
+            print(f"✅ BƯỚC 3: Trích xuất {len(cv_skills_hybrid['skills_union'])} skills (hybrid) từ CV")
+            # BƯỚC 4: So sánh CV-JD
+            cv_skills = cv_skills_hybrid['skills_union']
+            jd_skills = jd_skills_hybrid['skills_union']
             cv_job_title = parsed_cv.get('job_title', '')
-            
-            # Kiểm tra sự phù hợp job title vs job position
             position_match_score = self._check_position_match(cv_job_title, job_position, job_category)
-            
-            # Tính điểm matching skills
-            matching_skills = [skill for skill in cv_skills if skill.lower() in [jd_skill.lower() for jd_skill in jd_skills]]
-            missing_skills = [skill for skill in jd_skills if skill.lower() not in [cv_skill.lower() for cv_skill in cv_skills]]
-            
+            matching_skills = [skill for skill in cv_skills if self._normalize_skill(skill) in [self._normalize_skill(jd_skill) for jd_skill in jd_skills]]
+            missing_skills = [skill for skill in jd_skills if self._normalize_skill(skill) not in [self._normalize_skill(cv_skill) for cv_skill in cv_skills]]
             skills_match_score = len(matching_skills) / max(len(jd_skills), 1) * 100 if jd_skills else 0
-            
-            print(f"✅ BƯỚC 3: Skills matching - {len(matching_skills)}/{len(jd_skills)} ({skills_match_score:.1f}%)")
-            
-            # BƯỚC 4: Phân tích chất lượng CV
-            # Chuyển đổi parsed_cv dict thành ParsedCV object
+            print(f"✅ BƯỚC 4: Skills matching - {len(matching_skills)}/{len(jd_skills)} ({skills_match_score:.1f}%)")
+            # BƯỚC 5: Phân tích chất lượng CV
             from ..models.shared_models import ParsedCV
             parsed_cv_obj = ParsedCV(
                 summary=parsed_cv.get('sections', {}).get('summary', ''),
-                skills=parsed_cv.get('skills', []),
+                skills=cv_skills,
                 experience=parsed_cv.get('sections', {}).get('experience', ''),
                 education=parsed_cv.get('sections', {}).get('education', '')
             )
             quality_analysis = self.quality_analyzer.analyze(parsed_cv_obj)
-            print(f"✅ BƯỚC 4: Phân tích chất lượng CV hoàn tất")
-            
-            # BƯỚC 5: ML insights
+            print(f"✅ BƯỚC 5: Phân tích chất lượng CV hoàn tất")
+            # BƯỚC 6: ML insights
             ml_insights = self._analyze_cv_with_ml_insights(cv_text, job_category)
-            print(f"✅ BƯỚC 5: ML insights hoàn tất")
-            
-            # BƯỚC 6: Tính điểm ATS và Overall
+            print(f"✅ BƯỚC 6: ML insights hoàn tất")
+            # BƯỚC 7: Tính điểm ATS và Overall
             ats_score = self._calculate_ats_score(quality_analysis, parsed_cv_obj)
             overall_score = self._calculate_overall_score(
                 ats_score, quality_analysis, len(cv_skills), len(jd_skills),
                 cv_skills, jd_skills, job_category, position_match_score
             )
-            
-            print(f"✅ BƯỚC 6: ATS Score: {ats_score}, Overall Score: {overall_score}")
-            
-            # BƯỚC 7: Tạo feedback và suggestions
+            print(f"✅ BƯỚC 7: ATS Score: {ats_score}, Overall Score: {overall_score}")
+            # BƯỚC 8: Tạo feedback và suggestions
             feedback = self._generate_flexible_feedback(quality_analysis, parsed_cv_obj, ml_insights, jd_skills, job_category, overall_score)
             suggestions = self._generate_improvement_suggestions(quality_analysis, parsed_cv_obj, ml_insights, jd_skills)
-            
             # Tạo kết quả chi tiết
             result = {
                 "cv_analysis": {
                     "job_title": cv_job_title,
                     "skills": cv_skills,
+                    "skills_ml": cv_skills_hybrid['skills_ml'],
+                    "skills_llm": cv_skills_hybrid['skills_llm'],
                     "experience": parsed_cv.get('experience', []),
                     "education": parsed_cv.get('education', []),
                     "projects": parsed_cv.get('projects', []),
@@ -349,6 +371,8 @@ class CVEvaluationService:
                 },
                 "jd_analysis": {
                     "extracted_skills": jd_skills,
+                    "skills_ml": jd_skills_hybrid['skills_ml'],
+                    "skills_llm": jd_skills_hybrid['skills_llm'],
                     "jd_text": jd_text
                 },
                 "matching_analysis": {
@@ -370,10 +394,8 @@ class CVEvaluationService:
                 "job_category": job_category,
                 "job_position": job_position
             }
-            
             print(f"🎉 Phân tích hoàn tất - Overall Score: {overall_score}")
             return result
-            
         except Exception as e:
             print(f"❌ Lỗi trong evaluate_cv_comprehensive: {str(e)}")
             import traceback
@@ -546,7 +568,7 @@ class CVEvaluationService:
                 feedback += f"\n\n⚠️ Cần bổ sung: {', '.join(list(missing_skills)[:5])}"
         
         return feedback
-
+    
     def _generate_improvement_suggestions(self, quality_analysis: Dict, parsed_cv: ParsedCV, ml_insights: Dict, jd_skills: List[str]) -> List[str]:
         """BƯỚC 4: Tạo gợi ý cải thiện"""
         suggestions = []

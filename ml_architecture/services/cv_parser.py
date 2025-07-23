@@ -190,7 +190,7 @@ class IntelligentCVParser:
                 if word in job_keywords:
                     return line.strip()
         
-        return None
+                return None
 
     def extract_sections(self, text: str) -> Dict[str, str]:
         """Trích xuất các section từ CV"""

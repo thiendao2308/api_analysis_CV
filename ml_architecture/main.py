@@ -3,20 +3,18 @@ import sys
 import logging
 import traceback
 from typing import Optional
-from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body
+from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
+from transformers import AutoTokenizer, AutoModelForCausalLM
+from accelerate import Accelerator
+from ml_architecture.services.llm_api_extractor_cv import extract_cv_info_from_text
+from ml_architecture.services.llm_api_extractor_jd import extract_skills_from_jd
+from ml_architecture.services.cv_evaluation_service import CVEvaluationService
 
 # Add the ml_architecture directory to the Python path
 sys.path.append(os.path.join(os.path.dirname(__file__), 'ml_architecture'))
-
-from ml_architecture.services.cv_evaluation_service import CVEvaluationService
 from ml_architecture.models.shared_models import CVAnalysisResult
-from ml_architecture.services.llm_extractor import LLMExtractor
-llm_extractor = LLMExtractor()
-from ml_architecture.services.llm_extractor import LLMExtractor
-
-llm_extractor = LLMExtractor()  # Khởi tạo 1 lần khi start server
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -28,6 +26,20 @@ app = FastAPI(
     version="1.0.0"
 )
 
+# Khởi tạo analyzer
+analyzer = CVEvaluationService()
+
+from fastapi import Request
+@app.middleware("http")
+async def log_exceptions(request: Request, call_next):
+    try:
+        return await call_next(request)
+    except Exception as exc:
+        import traceback
+        print("=== EXCEPTION CAUGHT BY MIDDLEWARE ===")
+        traceback.print_exc()
+        raise
+
 # Add CORS middleware
 app.add_middleware(
     CORSMiddleware,
@@ -38,18 +50,7 @@ app.add_middleware(
 )
 
 # Initialize the CV analyzer
-analyzer = None
-
-@app.on_event("startup")
-async def startup_event():
-    """Initialize the CV analyzer on startup"""
-    global analyzer
-    try:
-        analyzer = CVEvaluationService()
-        logger.info("✅ CV Analyzer initialized successfully")
-    except Exception as e:
-        logger.error(f"❌ Failed to initialize CV Analyzer: {e}")
-        analyzer = None
+# analyzer = None
 
 async def process_cv_file(cv_file: UploadFile) -> str:
     """Process CV file and extract text content"""
@@ -141,13 +142,13 @@ async def analyze_cv(
                 detail="Nội dung CV không được để trống"
             )
 
-        # LLM extraction cho CV và JD
-        llm_cv_result = llm_extractor.extract(cv_content)
-        llm_jd_result = llm_extractor.extract(jd_text)
-
-        # Ghi log kết quả LLM extraction
+        # LLM extraction cho CV
+        llm_cv_result = extract_cv_info_from_text(cv_content)
         logging.info("[LLM Extraction] CV: %s", llm_cv_result)
-        logging.info("[LLM Extraction] JD: %s", llm_jd_result)
+
+        # LLM extraction cho JD (KHÔNG GỌI TRONG analyze_cv)
+        # llm_jd_result = extract_skills_from_jd(jd_text)
+        # logging.info("[LLM Extraction] JD: %s", llm_jd_result)
 
         # Phân tích CV với JD bằng bộ phân tích chi tiết mới
         try:
@@ -194,7 +195,7 @@ async def analyze_jd(jd_text: str = Form(...)):
     
     try:
         # Trích xuất skills từ JD
-        jd_skills = analyzer.extract_jd_skills(jd_text)
+        jd_skills = extract_skills_from_jd(jd_text)
         
         # Phân tích chi tiết JD
         from ml_architecture.data.jd_analysis_system import JDAnalysisSystem
@@ -213,12 +214,15 @@ async def analyze_jd(jd_text: str = Form(...)):
             detail=f"Lỗi khi phân tích JD: {str(e)}"
         )
 
-@app.post("/llm_extract")
-def llm_extract_endpoint(text: str = Body(..., embed=True)):
-    """
-    Extracts experience, education, projects, certifications, and skills from input text using TinyLlama LLM.
-    """
-    return llm_extractor.extract(text)
+@app.post("/extract-jd-skills-api")
+async def extract_jd_skills_api(jd_text: str = Form(...)):
+    """Extract skills from JD using LLM API (OpenAI)"""
+    try:
+        skills = extract_skills_from_jd(jd_text)
+        return {"skills": skills}
+    except Exception as e:
+        logger.error(f"LLM API extraction failed: {e}")
+        raise HTTPException(status_code=500, detail="LLM API extraction failed")
 
 @app.get("/health")
 async def health_check():
