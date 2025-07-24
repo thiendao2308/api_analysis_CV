@@ -1,5 +1,5 @@
 from typing import Dict, Any, List, Tuple
-from ..models.shared_models import ParsedCV
+from ml_architecture.models.shared_models import ParsedCV
 
 class CVQualityAnalyzer:
     """
