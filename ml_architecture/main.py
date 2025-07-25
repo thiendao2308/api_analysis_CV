@@ -12,8 +12,8 @@ from ml_architecture.services.llm_api_extractor_cv import extract_cv_info_from_t
 from ml_architecture.services.llm_api_extractor_jd import extract_skills_from_jd
 from ml_architecture.services.cv_evaluation_service import CVEvaluationService
 
-# Add the parent directory of ml_architecture to the Python path
-sys.path.insert(0, os.path.abspath(os.path.dirname(__file__)))
+# Add the project root directory to the Python path
+sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
 from ml_architecture.models.shared_models import CVAnalysisResult
 
 # Configure logging
