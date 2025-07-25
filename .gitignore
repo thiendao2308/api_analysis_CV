@@ -120,7 +120,6 @@ jspm_packages/
 
 # Model checkpoints and weights
 checkpoints/
-models/
 weights/
 saved_models/
 
