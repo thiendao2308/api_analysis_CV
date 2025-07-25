@@ -326,6 +326,10 @@ ml_architecture/spacy_models/*.json
 !ml_architecture/spacy_models/inspect_model.py
 !ml_architecture/spacy_models/test_spacy_model.py
 
+# Giữ lại các model đã train cần thiết cho hệ thống
+!ml_architecture/data/model_full/model-best/**
+!ml_architecture/data/model/model-best/**
+!ml_architecture/data/cv_job_classifier.pkl
 
 #env
 .env
