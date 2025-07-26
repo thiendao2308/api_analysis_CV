@@ -2,19 +2,32 @@ import os
 import sys
 import logging
 import traceback
+import gc
 from typing import Optional
 from fastapi import FastAPI, File, UploadFile, Form, HTTPException, Body, Request
 from fastapi.middleware.cors import CORSMiddleware
 from pydantic import BaseModel
-from transformers import AutoTokenizer, AutoModelForCausalLM
-from accelerate import Accelerator
-from ml_architecture.services.llm_api_extractor_cv import extract_cv_info_from_text
-from ml_architecture.services.llm_api_extractor_jd import extract_skills_from_jd
-from ml_architecture.services.cv_evaluation_service import CVEvaluationService
 
 # Add the project root directory to the Python path
 sys.path.insert(0, os.path.abspath(os.path.join(os.path.dirname(__file__), '..')))
-from ml_architecture.models.shared_models import CVAnalysisResult
+
+# Import memory management
+try:
+    from ml_architecture.config.memory_config import MemoryManager, check_memory_usage
+    # Apply memory optimizations for deployment
+    MemoryManager.optimize_for_deployment()
+except ImportError:
+    # Fallback if memory config is not available
+    class MemoryManager:
+        @staticmethod
+        def log_memory_usage(stage: str):
+            pass
+        @staticmethod
+        def force_garbage_collection():
+            gc.collect()
+    
+    def check_memory_usage():
+        return True
 
 # Configure logging
 logging.basicConfig(level=logging.INFO)
@@ -26,8 +39,8 @@ app = FastAPI(
     version="1.0.0"
 )
 
-# Khởi tạo analyzer
-analyzer = CVEvaluationService()
+# Lazy loading - chỉ khởi tạo analyzer khi cần
+analyzer = None
 
 from fastapi import Request
 @app.middleware("http")
@@ -49,8 +62,28 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-# Initialize the CV analyzer
-# analyzer = None
+def get_analyzer():
+    """Lazy loading cho analyzer để tiết kiệm memory"""
+    global analyzer
+    if analyzer is None:
+        try:
+            # Log memory before loading analyzer
+            MemoryManager.log_memory_usage("before_analyzer_init")
+            
+            from ml_architecture.services.cv_evaluation_service import CVEvaluationService
+            analyzer = CVEvaluationService()
+            
+            # Log memory after loading analyzer
+            MemoryManager.log_memory_usage("after_analyzer_init")
+            
+            logger.info("✅ CV Analyzer đã được khởi tạo thành công")
+        except Exception as e:
+            logger.error(f"❌ Lỗi khi khởi tạo CV Analyzer: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail="Lỗi server: Không thể khởi tạo CV Analyzer"
+            )
+    return analyzer
 
 async def process_cv_file(cv_file: UploadFile) -> str:
     """Process CV file and extract text content"""
@@ -106,7 +139,7 @@ async def process_cv_file(cv_file: UploadFile) -> str:
         logger.error(f"Error processing CV file: {e}")
         raise HTTPException(status_code=400, detail=f"Error processing CV file: {str(e)}")
 
-@app.post("/analyze-cv", response_model=CVAnalysisResult)
+@app.post("/analyze-cv")
 async def analyze_cv(
     cv_file: UploadFile = File(...),
     job_category: str = Form(...),
@@ -117,13 +150,17 @@ async def analyze_cv(
     """
     Phân tích CV từ file và đánh giá mức độ phù hợp với JD/JR
     """
-    if not analyzer:
-         raise HTTPException(
-            status_code=500,
-            detail="Lỗi server: CV Analyzer không khả dụng. Vui lòng kiểm tra logs."
-        )
-        
     try:
+        # Check memory usage before processing
+        if not check_memory_usage():
+            raise HTTPException(
+                status_code=503,
+                detail="Server is under high memory load. Please try again later."
+            )
+        
+        # Lazy load analyzer
+        analyzer = get_analyzer()
+        
         # Xử lý file CV để lấy nội dung text
         try:
             logger.info(f"Bắt đầu xử lý file: {cv_file.filename}")
@@ -142,13 +179,14 @@ async def analyze_cv(
                 detail="Nội dung CV không được để trống"
             )
 
-        # LLM extraction cho CV
-        llm_cv_result = extract_cv_info_from_text(cv_content)
-        logging.info("[LLM Extraction] CV: %s", llm_cv_result)
-
-        # LLM extraction cho JD (KHÔNG GỌI TRONG analyze_cv)
-        # llm_jd_result = extract_skills_from_jd(jd_text)
-        # logging.info("[LLM Extraction] JD: %s", llm_jd_result)
+        # LLM extraction cho CV - lazy load
+        try:
+            from ml_architecture.services.llm_api_extractor_cv import extract_cv_info_from_text
+            llm_cv_result = extract_cv_info_from_text(cv_content)
+            logging.info("[LLM Extraction] CV: %s", llm_cv_result)
+        except Exception as e:
+            logger.warning(f"LLM extraction failed: {e}")
+            llm_cv_result = {}
 
         # Phân tích CV với JD bằng bộ phân tích chi tiết mới
         try:
@@ -164,6 +202,10 @@ async def analyze_cv(
                 job_requirements=job_requirements
             )
             logger.info("Phân tích chi tiết hoàn tất.")
+            
+            # Clean up memory
+            MemoryManager.force_garbage_collection()
+            
         except Exception as e:
             logger.error(f"Lỗi khi phân tích CV: {str(e)}\n{traceback.format_exc()}")
             raise HTTPException(
@@ -187,20 +229,36 @@ async def analyze_jd(jd_text: str = Form(...)):
     """
     Phân tích JD và trích xuất skills
     """
-    if not analyzer:
-        raise HTTPException(
-            status_code=500,
-            detail="Lỗi server: CV Analyzer không khả dụng."
-        )
-    
     try:
-        # Trích xuất skills từ JD
-        jd_skills = extract_skills_from_jd(jd_text)
+        # Check memory usage before processing
+        if not check_memory_usage():
+            raise HTTPException(
+                status_code=503,
+                detail="Server is under high memory load. Please try again later."
+            )
         
-        # Phân tích chi tiết JD
-        from ml_architecture.data.jd_analysis_system import JDAnalysisSystem
-        jd_analyzer = JDAnalysisSystem()
-        jd_analysis = jd_analyzer.analyze_single_jd(jd_text)
+        # Lazy load analyzer
+        analyzer = get_analyzer()
+        
+        # Trích xuất skills từ JD - lazy load
+        try:
+            from ml_architecture.services.llm_api_extractor_jd import extract_skills_from_jd
+            jd_skills = extract_skills_from_jd(jd_text)
+        except Exception as e:
+            logger.warning(f"LLM extraction failed: {e}")
+            jd_skills = []
+        
+        # Phân tích chi tiết JD - lazy load
+        try:
+            from ml_architecture.data.jd_analysis_system import JDAnalysisSystem
+            jd_analyzer = JDAnalysisSystem()
+            jd_analysis = jd_analyzer.analyze_single_jd(jd_text)
+        except Exception as e:
+            logger.warning(f"JD analysis failed: {e}")
+            jd_analysis = {}
+        
+        # Clean up memory
+        MemoryManager.force_garbage_collection()
         
         return {
             "jd_text": jd_text,
@@ -218,6 +276,7 @@ async def analyze_jd(jd_text: str = Form(...)):
 async def extract_jd_skills_api(jd_text: str = Form(...)):
     """Extract skills from JD using LLM API (OpenAI)"""
     try:
+        from ml_architecture.services.llm_api_extractor_jd import extract_skills_from_jd
         skills = extract_skills_from_jd(jd_text)
         return {"skills": skills}
     except Exception as e:
@@ -227,10 +286,19 @@ async def extract_jd_skills_api(jd_text: str = Form(...)):
 @app.get("/health")
 async def health_check():
     """Health check endpoint"""
-    return {
-        "status": "healthy",
-        "analyzer_available": analyzer is not None
-    }
+    try:
+        analyzer = get_analyzer()
+        memory_usage = MemoryManager.get_memory_usage()
+        return {
+            "status": "healthy",
+            "analyzer_available": analyzer is not None,
+            "memory_usage_mb": round(memory_usage, 2)
+        }
+    except Exception as e:
+        return {
+            "status": "unhealthy",
+            "error": str(e)
+        }
 
 @app.get("/")
 async def root():

@@ -1,0 +1,22 @@
+services:
+  - type: web
+    name: cv-analysis-api
+    env: python
+    plan: free
+    buildCommand: pip install -r requirements.txt && python -m spacy download en_core_web_sm
+    startCommand: python start_server.py
+    envVars:
+      - key: PYTHON_VERSION
+        value: 3.10.13
+      - key: PYTORCH_CUDA_ALLOC_CONF
+        value: max_split_size_mb:128
+      - key: TOKENIZERS_PARALLELISM
+        value: false
+      - key: TRANSFORMERS_OFFLINE
+        value: "1"
+      - key: OMP_NUM_THREADS
+        value: "1"
+      - key: MKL_NUM_THREADS
+        value: "1"
+    healthCheckPath: /health
+    autoDeploy: true

@@ -35,18 +35,18 @@ class CVEvaluationService:
     """
     
     def __init__(self):
-        self.cv_parser = IntelligentCVParser()
-        self.quality_analyzer = CVQualityAnalyzer()
-        self.suggestion_generator = SuggestionGenerator()
+        # Lazy loading - chỉ khởi tạo các service nhẹ
+        self.cv_parser = None
+        self.quality_analyzer = None
+        self.suggestion_generator = None
         
-        # Load mô hình đã train (nếu có)
+        # Load mô hình đã train (nếu có) - lazy loading
         self.ml_model = None
         self.vectorizer = None
         self.feature_importance = None
-        self._load_trained_model()
         
-        # Load NER model cho JD analysis
-        self.jd_nlp = self._load_jd_ner_model()
+        # Load NER model cho JD analysis - lazy loading
+        self.jd_nlp = None
         
         # Bộ từ khóa section (từ evaluate_cv.py)
         self.section_keywords = [
@@ -136,24 +136,28 @@ class CVEvaluationService:
     
     def _load_jd_ner_model(self):
         """Load NER model cho JD analysis - BƯỚC 2"""
+        if self.jd_nlp is not None:
+            return self.jd_nlp
         try:
             # Thử load model mới đã train
             model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'model_full', 'model-best')
             print(f"BƯỚC 2: Đang tải JD NER model từ: {model_path}")
-            return spacy.load(model_path)
+            self.jd_nlp = spacy.load(model_path)
+            return self.jd_nlp
         except OSError:
             try:
                 # Fallback sang model cũ
                 model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'model', 'model-best')
                 print(f"BƯỚC 2: Fallback sang JD NER model cũ: {model_path}")
-                return spacy.load(model_path)
+                self.jd_nlp = spacy.load(model_path)
+                return self.jd_nlp
             except OSError:
                 print("BƯỚC 2: Không tìm thấy JD NER model, sử dụng model mặc định")
                 return None
     
     def extract_jd_skills(self, jd_text: str) -> List[str]:
         """BƯỚC 2: Trích xuất skills từ JD sử dụng NER model"""
-        if not self.jd_nlp:
+        if self.jd_nlp is None:
             return []
         
         try:
@@ -173,6 +177,8 @@ class CVEvaluationService:
     
     def _load_trained_model(self):
         """Load mô hình đã train và trích xuất feature importance"""
+        if self.ml_model is not None:
+            return
         try:
             model_path = os.path.join(os.path.dirname(__file__), '..', 'data', 'cv_job_classifier.pkl')
             if os.path.exists(model_path):
@@ -267,8 +273,13 @@ class CVEvaluationService:
     def _extract_skills_hybrid(self, text, job_category=None, is_cv=True):
         # ML extraction
         if is_cv:
+            if self.cv_parser is None:
+                from .cv_parser import IntelligentCVParser
+                self.cv_parser = IntelligentCVParser()
             skills_ml = self.cv_parser.extract_skills(text, job_category)
         else:
+            if self.jd_nlp is None:
+                self._load_jd_ner_model() # Ensure JD NER model is loaded
             skills_ml = self.extract_jd_skills(text)
         # LLM extraction
         skills_llm = []
@@ -342,6 +353,9 @@ class CVEvaluationService:
                 experience=parsed_cv.get('sections', {}).get('experience', ''),
                 education=parsed_cv.get('sections', {}).get('education', '')
             )
+            if self.quality_analyzer is None:
+                from .cv_quality_analyzer import CVQualityAnalyzer
+                self.quality_analyzer = CVQualityAnalyzer()
             quality_analysis = self.quality_analyzer.analyze(parsed_cv_obj)
             print(f"✅ BƯỚC 5: Phân tích chất lượng CV hoàn tất")
             # BƯỚC 6: ML insights
@@ -570,34 +584,35 @@ class CVEvaluationService:
         return feedback
     
     def _generate_improvement_suggestions(self, quality_analysis: Dict, parsed_cv: ParsedCV, ml_insights: Dict, jd_skills: List[str]) -> List[str]:
-        """BƯỚC 4: Tạo gợi ý cải thiện"""
-        suggestions = []
-        
-        # Gợi ý từ ML insights
-        if ml_insights.get('ml_suggestions'):
-            suggestions.extend(ml_insights['ml_suggestions'])
-        
-        # Gợi ý từ quality analysis
-        if quality_analysis.get('quality_score', 0) < 0.75:
-            suggestions.append("Cải thiện cấu trúc CV với các mục rõ ràng")
-        
-        # Gợi ý từ skills matching
-        if jd_skills:
+        """BƯỚC 6: Tạo gợi ý cải thiện CV"""
+        if self.suggestion_generator is None:
+            from .suggestion_generator import SuggestionGenerator
+            self.suggestion_generator = SuggestionGenerator()
+            
+        try:
+            # Extract missing skills
             cv_skills_set = set(parsed_cv.skills)
             jd_skills_set = set(jd_skills)
-            missing_skills = jd_skills_set - cv_skills_set
+            missing_skills = list(jd_skills_set - cv_skills_set)[:5]  # Limit to 5 missing skills
             
-            if missing_skills:
-                suggestions.append(f"Bổ sung các kỹ năng: {', '.join(list(missing_skills)[:3])}")
-        
-        # Gợi ý từ parsed CV
-        if not parsed_cv.summary:
-            suggestions.append("Thêm phần tóm tắt/mục tiêu nghề nghiệp")
-        
-        if not parsed_cv.experience:
-            suggestions.append("Bổ sung thông tin kinh nghiệm làm việc")
-        
-        return suggestions[:5]  # Giới hạn 5 gợi ý
+            # Extract matched skills
+            matched_skills = list(cv_skills_set & jd_skills_set)[:5]  # Limit to 5 matched skills
+            
+            # Get job category from ml_insights if available
+            job_category = ml_insights.get('important_features', [])
+            if job_category:
+                job_category = "INFORMATION-TECHNOLOGY"  # Default category
+            
+            suggestions = self.suggestion_generator.generate(
+                matched_keywords=matched_skills,
+                missing_keywords=missing_skills,
+                cv_quality=quality_analysis,
+                job_category=job_category
+            )
+            return suggestions
+        except Exception as e:
+            print(f"❌ Lỗi khi tạo gợi ý cải thiện: {e}")
+            return ["Cần cải thiện CV để phù hợp hơn với yêu cầu công việc"]
 
 # Test function
 if __name__ == "__main__":
