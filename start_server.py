@@ -13,6 +13,8 @@ os.environ['TOKENIZERS_PARALLELISM'] = 'false'
 os.environ['TRANSFORMERS_OFFLINE'] = '1'
 os.environ['OMP_NUM_THREADS'] = '1'
 os.environ['MKL_NUM_THREADS'] = '1'
+os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Force CPU mode
+os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = '1'  # Disable CUDA memory caching
 
 # Configure logging
 logging.basicConfig(
@@ -42,6 +44,16 @@ def optimize_memory():
         import pandas as pd
         pd.options.mode.chained_assignment = None
         logger.info("Pandas memory optimization applied")
+    except ImportError:
+        pass
+    
+    # Force PyTorch to use CPU
+    try:
+        import torch
+        if torch.cuda.is_available():
+            logger.info("CUDA available but forcing CPU mode for memory optimization")
+        else:
+            logger.info("CUDA not available, using CPU mode")
     except ImportError:
         pass
 

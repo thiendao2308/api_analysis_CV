@@ -18,5 +18,9 @@ services:
         value: "1"
       - key: MKL_NUM_THREADS
         value: "1"
+      - key: CUDA_VISIBLE_DEVICES
+        value: ""
+      - key: PYTORCH_NO_CUDA_MEMORY_CACHING
+        value: "1"
     healthCheckPath: /health
     autoDeploy: true
