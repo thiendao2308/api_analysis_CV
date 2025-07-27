@@ -13,6 +13,7 @@ try:
     from .cv_parser import IntelligentCVParser
     from .cv_quality_analyzer import CVQualityAnalyzer
     from .suggestion_generator import SuggestionGenerator
+    from .intelligent_jd_matcher import IntelligentJDMatcher
     from ..models.shared_models import ParsedCV
     from ..data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
 except ImportError:
@@ -23,6 +24,7 @@ except ImportError:
     from services.cv_parser import IntelligentCVParser
     from services.cv_quality_analyzer import CVQualityAnalyzer
     from services.suggestion_generator import SuggestionGenerator
+    from services.intelligent_jd_matcher import IntelligentJDMatcher
     from models.shared_models import ParsedCV
     from data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
 
@@ -47,6 +49,9 @@ class CVEvaluationService:
         
         # Load NER model cho JD analysis - lazy loading
         self.jd_nlp = None
+        
+        # Intelligent JD matching service
+        self.intelligent_jd_matcher = None
         
         # Bộ từ khóa section (từ evaluate_cv.py)
         self.section_keywords = [
@@ -336,15 +341,24 @@ class CVEvaluationService:
             # BƯỚC 3: Trích xuất skills từ CV (hybrid)
             cv_skills_hybrid = self._extract_skills_hybrid(cv_text, job_category, is_cv=True)
             print(f"✅ BƯỚC 3: Trích xuất {len(cv_skills_hybrid['skills_union'])} skills (hybrid) từ CV")
-            # BƯỚC 4: So sánh CV-JD
+            # BƯỚC 4: Intelligent CV-JD matching
             cv_skills = cv_skills_hybrid['skills_union']
             jd_skills = jd_skills_hybrid['skills_union']
             cv_job_title = parsed_cv.get('job_title', '')
             position_match_score = self._check_position_match(cv_job_title, job_position, job_category)
-            matching_skills = [skill for skill in cv_skills if self._normalize_skill(skill) in [self._normalize_skill(jd_skill) for jd_skill in jd_skills]]
-            missing_skills = [skill for skill in jd_skills if self._normalize_skill(skill) not in [self._normalize_skill(cv_skill) for cv_skill in cv_skills]]
-            skills_match_score = len(matching_skills) / max(len(jd_skills), 1) * 100 if jd_skills else 0
-            print(f"✅ BƯỚC 4: Skills matching - {len(matching_skills)}/{len(jd_skills)} ({skills_match_score:.1f}%)")
+            
+            # Use intelligent JD matching
+            if self.intelligent_jd_matcher is None:
+                self.intelligent_jd_matcher = IntelligentJDMatcher()
+            
+            matching_result = self.intelligent_jd_matcher.intelligent_matching(cv_skills, jd_skills)
+            matching_skills = matching_result['matching_skills']
+            missing_skills = matching_result['missing_skills']
+            skills_match_score = matching_result['match_score']
+            
+            print(f"✅ BƯỚC 4: Intelligent JD matching - {len(matching_skills)}/{len(jd_skills)} ({skills_match_score:.1f}%)")
+            print(f"   - Exact matches: {len(matching_result.get('exact_matches', []))}")
+            print(f"   - Semantic matches: {len(matching_result.get('semantic_matches', []))}")
             # BƯỚC 5: Phân tích chất lượng CV
             from ..models.shared_models import ParsedCV
             parsed_cv_obj = ParsedCV(
@@ -365,7 +379,7 @@ class CVEvaluationService:
             ats_score = self._calculate_ats_score(quality_analysis, parsed_cv_obj)
             overall_score = self._calculate_overall_score(
                 ats_score, quality_analysis, len(cv_skills), len(jd_skills),
-                cv_skills, jd_skills, job_category, position_match_score
+                cv_skills, jd_skills, job_category, position_match_score, matching_result
             )
             print(f"✅ BƯỚC 7: ATS Score: {ats_score}, Overall Score: {overall_score}")
             # BƯỚC 8: Tạo feedback và suggestions
@@ -493,7 +507,7 @@ class CVEvaluationService:
         
         return min(ats_score, 100)
 
-    def _calculate_overall_score(self, ats_score: int, quality_analysis: Dict, cv_skills_count: int, jd_skills_count: int, cv_skills: List[str], jd_skills: List[str], job_category: str, position_match_score: int) -> int:
+    def _calculate_overall_score(self, ats_score: int, quality_analysis: Dict, cv_skills_count: int, jd_skills_count: int, cv_skills: List[str], jd_skills: List[str], job_category: str, position_match_score: int, matching_result: Dict = None) -> int:
         """
         Tính điểm tổng thể với logic mới:
         - ATS Score: 40%
@@ -505,11 +519,17 @@ class CVEvaluationService:
             # 1. ATS Score (40%)
             ats_component = ats_score * 0.4
             
-            # 2. Skills Matching (30%)
+            # 2. Skills Matching (30%) - Sử dụng kết quả từ Intelligent JD Matching
             skills_match = 0
             if jd_skills_count > 0:
-                matching_count = len([s for s in cv_skills if s.lower() in [js.lower() for js in jd_skills]])
-                skills_match = (matching_count / jd_skills_count) * 100
+                # Sử dụng matching_result từ Intelligent JD Matching
+                if matching_result and 'match_score' in matching_result:
+                    # Lấy match score từ intelligent matching
+                    skills_match = matching_result.get('match_score', 0)
+                else:
+                    # Fallback: tính theo exact matching
+                    matching_count = len([s for s in cv_skills if s.lower() in [js.lower() for js in jd_skills]])
+                    skills_match = (matching_count / jd_skills_count) * 100
             skills_component = skills_match * 0.3
             
             # 3. Position Match (20%)
