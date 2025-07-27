@@ -74,14 +74,17 @@ def start_server():
         logger.info(f"Starting server on {host}:{port}")
         logger.info("Memory optimizations applied successfully")
         
-        # Start server with optimized settings
+        # Start server with optimized settings for Render
         uvicorn.run(
             app,
             host=host,
             port=port,
             workers=1,  # Single worker to save memory
             loop="asyncio",
-            log_level="info"
+            log_level="info",
+            timeout_keep_alive=30,  # Reduce keep-alive timeout
+            timeout_graceful_shutdown=10,  # Reduce graceful shutdown timeout
+            access_log=False  # Disable access logs to save memory
         )
         
     except Exception as e:

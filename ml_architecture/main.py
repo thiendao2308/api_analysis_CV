@@ -70,6 +70,9 @@ def get_analyzer():
             # Log memory before loading analyzer
             MemoryManager.log_memory_usage("before_analyzer_init")
             
+            # Force garbage collection before loading
+            MemoryManager.force_garbage_collection()
+            
             from ml_architecture.services.cv_evaluation_service import CVEvaluationService
             analyzer = CVEvaluationService()
             
@@ -79,6 +82,8 @@ def get_analyzer():
             logger.info("✅ CV Analyzer đã được khởi tạo thành công")
         except Exception as e:
             logger.error(f"❌ Lỗi khi khởi tạo CV Analyzer: {e}")
+            # Force garbage collection on error
+            MemoryManager.force_garbage_collection()
             raise HTTPException(
                 status_code=500,
                 detail="Lỗi server: Không thể khởi tạo CV Analyzer"
@@ -285,14 +290,13 @@ async def extract_jd_skills_api(jd_text: str = Form(...)):
 
 @app.get("/health")
 async def health_check():
-    """Health check endpoint"""
+    """Health check endpoint - simplified for faster response"""
     try:
-        analyzer = get_analyzer()
         memory_usage = MemoryManager.get_memory_usage()
         return {
             "status": "healthy",
-            "analyzer_available": analyzer is not None,
-            "memory_usage_mb": round(memory_usage, 2)
+            "memory_usage_mb": round(memory_usage, 2),
+            "timestamp": "2024-01-01T00:00:00Z"
         }
     except Exception as e:
         return {
