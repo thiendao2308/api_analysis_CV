@@ -111,7 +111,10 @@ class CVEvaluationService:
         # Đường dẫn file tiêu chí
         self.criteria_file = os.path.join(os.path.dirname(__file__), '..', 'data', 'cv_criteria_final.json')
         
-        # Template feedback linh hoạt
+        # LLM Feedback Generator - lazy loading
+        self.llm_feedback_generator = None
+        
+        # Template feedback linh hoạt (fallback)
         self.feedback_templates = {
             "Xuất sắc": [
                 "CV của bạn rất ấn tượng và phù hợp với vị trí này!",
@@ -382,9 +385,34 @@ class CVEvaluationService:
                 cv_skills, jd_skills, job_category, position_match_score, matching_result
             )
             print(f"✅ BƯỚC 7: ATS Score: {ats_score}, Overall Score: {overall_score}")
-            # BƯỚC 8: Tạo feedback và suggestions
-            feedback = self._generate_flexible_feedback(quality_analysis, parsed_cv_obj, ml_insights, jd_skills, job_category, overall_score)
-            suggestions = self._generate_improvement_suggestions(quality_analysis, parsed_cv_obj, ml_insights, jd_skills)
+            # BƯỚC 8: Tạo feedback thông minh bằng LLM
+            llm_feedback = self._generate_intelligent_llm_feedback(
+                cv_analysis={
+                    "skills": cv_skills,
+                    "experience": parsed_cv.get('experience', []),
+                    "education": parsed_cv.get('education', [])
+                },
+                jd_analysis={
+                    "extracted_skills": jd_skills
+                },
+                matching_analysis={
+                    "matching_skills": matching_skills,
+                    "missing_skills": missing_skills,
+                    "skills_match_score": skills_match_score
+                },
+                quality_analysis=quality_analysis,
+                overall_score=overall_score,
+                job_category=job_category,
+                job_position=job_position
+            )
+            
+            # Fallback to traditional feedback if LLM fails
+            if not llm_feedback:
+                feedback = self._generate_flexible_feedback(quality_analysis, parsed_cv_obj, ml_insights, jd_skills, job_category, overall_score)
+                suggestions = self._generate_improvement_suggestions(quality_analysis, parsed_cv_obj, ml_insights, jd_skills)
+            else:
+                feedback = llm_feedback.get('overall_assessment', '')
+                suggestions = llm_feedback.get('specific_suggestions', [])
             # Tạo kết quả chi tiết
             result = {
                 "cv_analysis": {
@@ -602,6 +630,32 @@ class CVEvaluationService:
                 feedback += f"\n\n⚠️ Cần bổ sung: {', '.join(list(missing_skills)[:5])}"
         
         return feedback
+    
+    def _generate_intelligent_llm_feedback(self, cv_analysis: Dict, jd_analysis: Dict, matching_analysis: Dict, quality_analysis: Dict, overall_score: float, job_category: str, job_position: str) -> Dict:
+        """Generate intelligent feedback using LLM"""
+        try:
+            # Lazy load LLM Feedback Generator
+            if self.llm_feedback_generator is None:
+                from .llm_feedback_generator import LLMFeedbackGenerator
+                self.llm_feedback_generator = LLMFeedbackGenerator()
+            
+            # Generate intelligent feedback
+            llm_feedback = self.llm_feedback_generator.generate_intelligent_feedback(
+                cv_analysis=cv_analysis,
+                jd_analysis=jd_analysis,
+                matching_analysis=matching_analysis,
+                quality_analysis=quality_analysis,
+                overall_score=overall_score,
+                job_category=job_category,
+                job_position=job_position
+            )
+            
+            print(f"✅ LLM Feedback generated successfully")
+            return llm_feedback
+            
+        except Exception as e:
+            print(f"❌ Error generating LLM feedback: {e}")
+            return None
     
     def _generate_improvement_suggestions(self, quality_analysis: Dict, parsed_cv: ParsedCV, ml_insights: Dict, jd_skills: List[str]) -> List[str]:
         """BƯỚC 6: Tạo gợi ý cải thiện CV"""
