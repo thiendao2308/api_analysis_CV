@@ -31,15 +31,17 @@ def extract_cv_info_from_text(cv_text):
         )
         
         logger.info("Making OpenAI API call...")
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # hoặc "gpt-4" nếu bạn có quyền
+        
+        # Use new OpenAI API format for openai>=1.0.0
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=3000,
             temperature=0.2,
-            api_key=OPENAI_API_KEY,
         )
         
-        content = response.choices[0].message['content'].strip()
+        content = response.choices[0].message.content.strip()
         logger.info(f"✅ LLM CV extraction successful, response length: {len(content)}")
         return content
         

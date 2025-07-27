@@ -26,15 +26,17 @@ def extract_skills_from_jd(jd_text):
         )
         
         logger.info("Making OpenAI API call for JD skills...")
-        response = openai.ChatCompletion.create(
-            model="gpt-3.5-turbo",  # hoặc "gpt-4" nếu bạn có quyền
+        
+        # Use new OpenAI API format for openai>=1.0.0
+        client = openai.OpenAI(api_key=OPENAI_API_KEY)
+        response = client.chat.completions.create(
+            model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
             max_tokens=2000,
             temperature=0.2,
-            api_key=OPENAI_API_KEY,
         )
         
-        skills = response.choices[0].message['content'].strip()
+        skills = response.choices[0].message.content.strip()
         logger.info(f"✅ LLM JD skills extraction successful, extracted skills: {skills}")
         return skills
         
