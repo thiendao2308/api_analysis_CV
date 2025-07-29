@@ -64,39 +64,58 @@ class LLMFeedbackGenerator:
         strengths = quality_analysis.get('strengths', [])
         weaknesses = quality_analysis.get('weaknesses', [])
         
+        # Thêm thông tin chi tiết về CV
+        cv_job_title = cv_analysis.get('job_title', 'N/A')
+        cv_experience = cv_analysis.get('experience', [])
+        cv_education = cv_analysis.get('education', [])
+        cv_projects = cv_analysis.get('projects', [])
+        
         context = f"""
 PHÂN TÍCH CV-JD CHO VỊ TRÍ: {job_position} - NGÀNH: {job_category}
 
 THÔNG TIN CV:
-- Kỹ năng CV: {', '.join(cv_skills[:10])}
+- Job Title hiện tại: {cv_job_title}
+- Kỹ năng CV: {', '.join(cv_skills[:15])}
+- Kinh nghiệm: {len(cv_experience)} vị trí
+- Dự án: {len(cv_projects)} dự án
 - Điểm chất lượng CV: {quality_score:.2f}
-- Điểm mạnh: {', '.join(strengths[:3])}
-- Điểm yếu: {', '.join(weaknesses[:3])}
+- Điểm mạnh: {', '.join(strengths[:5])}
+- Điểm yếu: {', '.join(weaknesses[:5])}
 
 THÔNG TIN JD:
-- Kỹ năng yêu cầu: {', '.join(jd_skills[:10])}
+- Kỹ năng yêu cầu: {', '.join(jd_skills[:15])}
 
 KẾT QUẢ SO KHỚP:
-- Kỹ năng phù hợp: {', '.join(matching_skills[:5])}
-- Kỹ năng thiếu: {', '.join(missing_skills[:5])}
+- Kỹ năng phù hợp: {', '.join(matching_skills[:10])}
+- Kỹ năng thiếu: {', '.join(missing_skills[:10])}
 - Tỷ lệ khớp: {skills_match_score:.1f}%
 - Điểm tổng thể: {overall_score:.1f}/100
 
+PHÂN TÍCH CHI TIẾT:
+- CV có {len(cv_skills)} kỹ năng, JD yêu cầu {len(jd_skills)} kỹ năng
+- Khớp chính xác: {len(matching_skills)}/{len(jd_skills)} kỹ năng
+- Thiếu {len(missing_skills)} kỹ năng quan trọng
+
 YÊU CẦU: Hãy đưa ra feedback chân thật, cụ thể và hữu ích cho ứng viên. Feedback phải:
 1. Chân thật - không quá lạc quan hay bi quan
-2. Cụ thể - chỉ ra điểm mạnh/yếu cụ thể
-3. Hữu ích - đưa ra gợi ý thực tế để cải thiện
+2. Cụ thể - chỉ ra điểm mạnh/yếu cụ thể dựa trên missing skills
+3. Hữu ích - đưa ra gợi ý thực tế để cải thiện missing skills
 4. Cân bằng - vừa động viên vừa chỉ ra điểm cần cải thiện
-5. Phù hợp với ngành nghề {job_category}
+5. Phù hợp với ngành nghề {job_category} và vị trí {job_position}
+
+Đặc biệt chú ý:
+- Nếu missing skills nhiều: đưa ra lộ trình học tập cụ thể
+- Nếu matching skills ít: gợi ý cách highlight skills hiện có
+- Nếu overall score thấp: đưa ra priority actions rõ ràng
 
 Hãy trả về JSON format:
 {{
-    "overall_assessment": "Đánh giá tổng quan chân thật",
-    "strengths": ["Điểm mạnh 1", "Điểm mạnh 2"],
-    "weaknesses": ["Điểm yếu 1", "Điểm yếu 2"],
-    "specific_suggestions": ["Gợi ý cụ thể 1", "Gợi ý cụ thể 2"],
-    "priority_actions": ["Hành động ưu tiên 1", "Hành động ưu tiên 2"],
-    "encouragement": "Lời động viên chân thành"
+    "overall_assessment": "Đánh giá tổng quan chân thật dựa trên missing skills",
+    "strengths": ["Điểm mạnh cụ thể 1", "Điểm mạnh cụ thể 2"],
+    "weaknesses": ["Điểm yếu cụ thể dựa trên missing skills 1", "Điểm yếu cụ thể 2"],
+    "specific_suggestions": ["Gợi ý cụ thể để học missing skills 1", "Gợi ý cụ thể 2"],
+    "priority_actions": ["Hành động ưu tiên để cải thiện 1", "Hành động ưu tiên 2"],
+    "encouragement": "Lời động viên chân thành dựa trên potential"
 }}
 """
         return context

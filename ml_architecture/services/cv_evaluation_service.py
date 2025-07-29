@@ -289,17 +289,25 @@ class CVEvaluationService:
             if self.jd_nlp is None:
                 self._load_jd_ner_model() # Ensure JD NER model is loaded
             skills_ml = self.extract_jd_skills(text)
-        # LLM extraction
+        
+        # LLM extraction - Thêm cho cả CV và JD
         skills_llm = []
-        # Nếu là JD, gọi OpenAI API để trích xuất skills (nếu có API key)
-        if not is_cv:
-            try:
+        try:
+            if is_cv:
+                # LLM extraction cho CV
+                from ml_architecture.services.llm_api_extractor_cv import extract_skills_from_cv
+                skills_llm_str = extract_skills_from_cv(text)
+                if isinstance(skills_llm_str, str):
+                    skills_llm = [s.strip() for s in skills_llm_str.split(",") if s.strip()]
+            else:
+                # LLM extraction cho JD
                 from ml_architecture.services.llm_api_extractor_jd import extract_skills_from_jd
                 skills_llm_str = extract_skills_from_jd(text)
                 if isinstance(skills_llm_str, str):
                     skills_llm = [s.strip() for s in skills_llm_str.split(",") if s.strip()]
-            except Exception as e:
-                print(f"[Hybrid JD] Lỗi khi gọi OpenAI API: {e}")
+        except Exception as e:
+            print(f"[Hybrid {'CV' if is_cv else 'JD'}] Lỗi khi gọi OpenAI API: {e}")
+        
         # Union, loại trùng, chuẩn hóa
         all_skills = set(self._normalize_skill(s) for s in skills_ml) | set(self._normalize_skill(s) for s in skills_llm)
         # Trả về dạng chuẩn hóa (capitalize)
