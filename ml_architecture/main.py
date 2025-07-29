@@ -88,6 +88,15 @@ def get_analyzer():
                 status_code=500,
                 detail="Lỗi server: Không thể khởi tạo CV Analyzer"
             )
+    
+    # Double check analyzer is not None
+    if analyzer is None:
+        logger.error("❌ Analyzer is still None after initialization attempt")
+        raise HTTPException(
+            status_code=500,
+            detail="Lỗi server: Analyzer không được khởi tạo"
+        )
+    
     return analyzer
 
 async def process_cv_file(cv_file: UploadFile) -> str:
@@ -316,6 +325,240 @@ async def root():
             "health": "/health"
         }
     }
+
+# Add new models for web client integration
+class UserCVRequest(BaseModel):
+    user_id: str
+    cv_id: str
+    job_category: str
+    job_position: str = None
+
+class JobPostingRequest(BaseModel):
+    job_id: str
+    job_title: str
+    job_description: str
+    job_requirements: str = None
+    company_name: str = None
+
+class WebClientAnalysisRequest(BaseModel):
+    user_id: str
+    cv_id: str
+    job_id: str
+    job_category: str
+    job_position: str = None
+
+@app.post("/analyze-cv-from-web-client")
+async def analyze_cv_from_web_client(request: WebClientAnalysisRequest):
+    """
+    Phân tích CV từ web client - luồng mới
+    CV và JD được import tự động từ web client
+    """
+    try:
+        # Check memory usage before processing - but don't fail immediately
+        memory_ok = check_memory_usage()
+        if not memory_ok:
+            logger.warning("High memory usage detected, but continuing...")
+        
+        # Lazy load analyzer - with better error handling
+        try:
+            analyzer = get_analyzer()
+            if analyzer is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Lỗi server: Không thể khởi tạo analyzer"
+                )
+        except Exception as e:
+            logger.error(f"❌ Lỗi khi khởi tạo analyzer: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lỗi server: {str(e)}"
+            )
+        
+        # 1. Lấy CV content từ web client database
+        cv_content = await get_cv_content_from_web_client(request.user_id, request.cv_id)
+        
+        # 2. Lấy JD content từ web client database  
+        jd_content = await get_jd_content_from_web_client(request.job_id)
+        
+        # 3. Phân tích CV với JD
+        analysis_result = analyzer.evaluate_cv_comprehensive(
+            cv_text=cv_content,
+            job_category=request.job_category,
+            job_position=request.job_position,
+            jd_text=jd_content,
+            job_requirements=None  # Có thể thêm từ JD content
+        )
+        
+        # 4. Lưu kết quả phân tích vào web client database
+        await save_analysis_result_to_web_client(
+            user_id=request.user_id,
+            cv_id=request.cv_id,
+            job_id=request.job_id,
+            analysis_result=analysis_result
+        )
+        
+        # Clean up memory
+        MemoryManager.force_garbage_collection()
+        
+        return analysis_result
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi khi phân tích CV từ web client: {str(e)}\n{traceback.format_exc()}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+@app.get("/get-user-cv/{user_id}/{cv_id}")
+async def get_user_cv(user_id: str, cv_id: str):
+    """
+    Lấy thông tin CV của user từ web client
+    """
+    try:
+        cv_info = await get_cv_info_from_web_client(user_id, cv_id)
+        return cv_info
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy CV: {str(e)}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Không tìm thấy CV: {str(e)}"
+        )
+
+@app.get("/get-job-posting/{job_id}")
+async def get_job_posting(job_id: str):
+    """
+    Lấy thông tin job posting từ web client
+    """
+    try:
+        job_info = await get_job_info_from_web_client(job_id)
+        return job_info
+    except Exception as e:
+        logger.error(f"Lỗi khi lấy job posting: {str(e)}")
+        raise HTTPException(
+            status_code=404,
+            detail=f"Không tìm thấy job posting: {str(e)}"
+        )
+
+@app.post("/analyze-cv-with-job")
+async def analyze_cv_with_job(request: UserCVRequest):
+    """
+    Phân tích CV với job category được chọn
+    CV được lấy từ user account, JD được suggest tự động
+    """
+    try:
+        # Check memory usage before processing - but don't fail immediately
+        memory_ok = check_memory_usage()
+        if not memory_ok:
+            logger.warning("High memory usage detected, but continuing...")
+        
+        # Lazy load analyzer - with better error handling
+        try:
+            analyzer = get_analyzer()
+            if analyzer is None:
+                raise HTTPException(
+                    status_code=500,
+                    detail="Lỗi server: Không thể khởi tạo analyzer"
+                )
+        except Exception as e:
+            logger.error(f"❌ Lỗi khi khởi tạo analyzer: {e}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lỗi server: {str(e)}"
+            )
+        
+        # 1. Lấy CV content
+        cv_content = await get_cv_content_from_web_client(request.user_id, request.cv_id)
+        
+        # 2. Tìm job postings phù hợp với category
+        suggested_jobs = await get_suggested_jobs_for_category(request.job_category)
+        
+        # 3. Phân tích với từng job suggestion
+        analysis_results = []
+        for job in suggested_jobs[:3]:  # Top 3 suggestions
+            jd_content = await get_jd_content_from_web_client(job['job_id'])
+            
+            analysis_result = analyzer.evaluate_cv_comprehensive(
+                cv_text=cv_content,
+                job_category=request.job_category,
+                job_position=request.job_position or job.get('job_title'),
+                jd_text=jd_content
+            )
+            
+            analysis_results.append({
+                "job_id": job['job_id'],
+                "job_title": job['job_title'],
+                "company_name": job.get('company_name'),
+                "analysis": analysis_result
+            })
+        
+        return {
+            "user_id": request.user_id,
+            "cv_id": request.cv_id,
+            "job_category": request.job_category,
+            "suggested_analyses": analysis_results
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi khi phân tích CV với job suggestions: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
+# Import web client integration
+from ml_architecture.services.web_client_integration import WebClientIntegration, MockWebClientIntegration
+
+# Initialize web client integration
+web_client = MockWebClientIntegration()  # Use mock for development
+
+# Helper functions for web client integration
+async def get_cv_content_from_web_client(user_id: str, cv_id: str) -> str:
+    """
+    Lấy CV content từ web client database
+    """
+    logger.info(f"Getting CV content for user {user_id}, CV {cv_id}")
+    return await web_client.get_cv_content(user_id, cv_id)
+
+async def get_jd_content_from_web_client(job_id: str) -> str:
+    """
+    Lấy JD content từ web client database
+    """
+    logger.info(f"Getting JD content for job {job_id}")
+    job_data = await web_client.get_job_content(job_id)
+    return job_data.get('job_description', '') + '\n\n' + job_data.get('job_requirements', '')
+
+async def get_cv_info_from_web_client(user_id: str, cv_id: str) -> dict:
+    """
+    Lấy thông tin CV từ web client
+    """
+    user_cvs = await web_client.get_user_cvs(user_id)
+    for cv in user_cvs:
+        if cv.get('cv_id') == cv_id:
+            return cv
+    return {}
+
+async def get_job_info_from_web_client(job_id: str) -> dict:
+    """
+    Lấy thông tin job posting từ web client
+    """
+    return await web_client.get_job_content(job_id)
+
+async def get_suggested_jobs_for_category(job_category: str) -> list:
+    """
+    Lấy danh sách job suggestions cho category
+    """
+    return await web_client.get_jobs_by_category(job_category)
+
+async def save_analysis_result_to_web_client(user_id: str, cv_id: str, job_id: str, analysis_result: dict):
+    """
+    Lưu kết quả phân tích vào web client database
+    """
+    logger.info(f"Saving analysis result for user {user_id}, CV {cv_id}, job {job_id}")
+    return await web_client.save_analysis_result(user_id, cv_id, job_id, analysis_result)
 
 if __name__ == "__main__":
     import uvicorn
