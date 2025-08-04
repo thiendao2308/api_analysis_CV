@@ -86,12 +86,12 @@ def start_server():
             workers=1,  # Single worker to save memory
             loop="asyncio",
             log_level="info",
-            timeout_keep_alive=30,  # Reduce keep-alive timeout
-            timeout_graceful_shutdown=10,  # Reduce graceful shutdown timeout
+            timeout_keep_alive=15,  # Reduce keep-alive timeout
+            timeout_graceful_shutdown=5,  # Reduce graceful shutdown timeout
             access_log=False,  # Disable access logs to save memory
             # Additional optimizations
-            limit_concurrency=10,  # Limit concurrent requests
-            limit_max_requests=1000,  # Restart worker after 1000 requests
+            limit_concurrency=5,  # Limit concurrent requests
+            limit_max_requests=500,  # Restart worker after 500 requests
         )
         
     except Exception as e:

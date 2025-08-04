@@ -7,7 +7,7 @@ services:
       pip install --upgrade pip
       pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
       python -m spacy download en_core_web_sm --no-deps
-    startCommand: python start_server.py
+    startCommand: python quick_start.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.13
@@ -39,5 +39,10 @@ services:
       # Force CPU mode for PyTorch
       - key: PYTORCH_CUDA_DEVICE
         value: "cpu"
+      # Startup optimization
+      - key: PYTHONUNBUFFERED
+        value: "1"
+      - key: PYTHONDONTWRITEBYTECODE
+        value: "1"
     healthCheckPath: /health
     autoDeploy: true
