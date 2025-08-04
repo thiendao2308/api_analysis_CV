@@ -3,11 +3,15 @@ services:
     name: cv-analysis-api
     env: python
     plan: free
-    buildCommand: pip install -r requirements.txt && python -m spacy download en_core_web_sm
+    buildCommand: |
+      pip install --upgrade pip
+      pip install --no-cache-dir --disable-pip-version-check -r requirements.txt
+      python -m spacy download en_core_web_sm --no-deps
     startCommand: python start_server.py
     envVars:
       - key: PYTHON_VERSION
         value: 3.10.13
+      # Memory optimization
       - key: PYTORCH_CUDA_ALLOC_CONF
         value: max_split_size_mb:128
       - key: TOKENIZERS_PARALLELISM
@@ -22,5 +26,15 @@ services:
         value: ""
       - key: PYTORCH_NO_CUDA_MEMORY_CACHING
         value: "1"
+      # Build optimization
+      - key: PIP_NO_CACHE_DIR
+        value: "1"
+      - key: PIP_DISABLE_PIP_VERSION_CHECK
+        value: "1"
+      # Additional optimizations
+      - key: PYTORCH_JIT
+        value: "0"
+      - key: TRANSFORMERS_CACHE
+        value: "/tmp/transformers_cache"
     healthCheckPath: /health
     autoDeploy: true

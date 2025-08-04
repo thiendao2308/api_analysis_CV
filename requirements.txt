@@ -1,29 +1,41 @@
+# Core API dependencies
 fastapi==0.115.13
 uvicorn==0.32.1
 python-multipart==0.0.6
+pydantic==2.11.7
+python-dotenv==1.0.0
+
+# File processing
 python-docx==1.0.1
 PyPDF2==3.0.1
-spacy==3.8.7
+PyMuPDF==1.24.1
+
+# Core ML - CPU only versions (lighter for deployment)
+torch==2.1.1+cpu
+transformers==4.35.2
 scikit-learn==1.3.2
 pandas==2.1.3
 numpy==1.26.2
-transformers==4.35.2
-torch==2.1.1
+
+# NLP processing
+spacy==3.8.7
+
+# LLM integration
+openai
+
+# System monitoring
+psutil
+
+# Web client integration
+aiohttp==3.9.1
+httpx==0.25.2
+redis==5.0.1
+cachetools==5.3.2
+
+# Optional dependencies (keep for full functionality)
+pytesseract
+pdf2image
 python-jose==3.3.0
 passlib==1.7.4
 bcrypt==4.0.1
-sqlalchemy==2.0.23
-pydantic==2.11.7
-python-dotenv==1.0.0 
-accelerate==0.24.1 
-PyMuPDF==1.24.1 
-pytesseract 
-pdf2image 
-openai
-psutil
-# Web Client Integration Dependencies
-aiohttp==3.9.1
-asyncio==3.4.3
-httpx==0.25.2
-redis==5.0.1
-cachetools==5.3.2 
+sqlalchemy==2.0.23 

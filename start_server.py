@@ -16,6 +16,10 @@ os.environ['MKL_NUM_THREADS'] = '1'
 os.environ['CUDA_VISIBLE_DEVICES'] = ''  # Force CPU mode
 os.environ['PYTORCH_NO_CUDA_MEMORY_CACHING'] = '1'  # Disable CUDA memory caching
 
+# Additional optimizations for Render
+os.environ['PYTORCH_JIT'] = '0'  # Disable JIT compilation
+os.environ['TRANSFORMERS_CACHE'] = '/tmp/transformers_cache'  # Use temp cache
+
 # Configure logging
 logging.basicConfig(
     level=logging.INFO,
@@ -84,7 +88,10 @@ def start_server():
             log_level="info",
             timeout_keep_alive=30,  # Reduce keep-alive timeout
             timeout_graceful_shutdown=10,  # Reduce graceful shutdown timeout
-            access_log=False  # Disable access logs to save memory
+            access_log=False,  # Disable access logs to save memory
+            # Additional optimizations
+            limit_concurrency=10,  # Limit concurrent requests
+            limit_max_requests=1000,  # Restart worker after 1000 requests
         )
         
     except Exception as e:
