@@ -36,5 +36,8 @@ services:
         value: "0"
       - key: TRANSFORMERS_CACHE
         value: "/tmp/transformers_cache"
+      # Force CPU mode for PyTorch
+      - key: PYTORCH_CUDA_DEVICE
+        value: "cpu"
     healthCheckPath: /health
     autoDeploy: true
