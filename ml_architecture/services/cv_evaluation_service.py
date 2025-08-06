@@ -599,6 +599,89 @@ class CVEvaluationService:
             print(f"❌ Lỗi tính overall score: {e}")
             return 50  # Fallback score
 
+    def _calculate_industry_specific_score(self, job_category: str, job_position: str, matching_result: dict, quality_score: float) -> dict:
+        """Tính điểm theo ngành nghề cụ thể"""
+        
+        industry_weights = {
+            "INFORMATION-TECHNOLOGY": {
+                "technical_skills": 0.4,
+                "soft_skills": 0.2,
+                "experience": 0.25,
+                "education": 0.15
+            },
+            "MARKETING": {
+                "technical_skills": 0.3,
+                "soft_skills": 0.35,
+                "experience": 0.25,
+                "education": 0.1
+            },
+            "FINANCE": {
+                "technical_skills": 0.35,
+                "soft_skills": 0.2,
+                "experience": 0.3,
+                "education": 0.15
+            },
+            "HUMAN-RESOURCES": {
+                "technical_skills": 0.25,
+                "soft_skills": 0.4,
+                "experience": 0.25,
+                "education": 0.1
+            },
+            "SALES": {
+                "technical_skills": 0.2,
+                "soft_skills": 0.45,
+                "experience": 0.25,
+                "education": 0.1
+            },
+            "HEALTHCARE": {
+                "technical_skills": 0.4,
+                "soft_skills": 0.25,
+                "experience": 0.25,
+                "education": 0.1
+            },
+            "EDUCATION": {
+                "technical_skills": 0.25,
+                "soft_skills": 0.35,
+                "experience": 0.25,
+                "education": 0.15
+            },
+            "DESIGN": {
+                "technical_skills": 0.35,
+                "soft_skills": 0.3,
+                "experience": 0.25,
+                "education": 0.1
+            }
+        }
+        
+        # Get weights for this industry
+        weights = industry_weights.get(job_category.upper(), industry_weights["INFORMATION-TECHNOLOGY"])
+        
+        # Calculate component scores
+        technical_score = matching_result.get('match_score', 0)
+        soft_skills_score = min(100, quality_score * 1.2)  # Boost soft skills for quality
+        experience_score = min(100, quality_score * 1.1)  # Experience based on quality
+        education_score = min(100, quality_score * 0.9)  # Education slightly lower weight
+        
+        # Calculate weighted score
+        weighted_score = (
+            technical_score * weights["technical_skills"] +
+            soft_skills_score * weights["soft_skills"] +
+            experience_score * weights["experience"] +
+            education_score * weights["education"]
+        )
+        
+        return {
+            "industry_score": weighted_score,
+            "component_scores": {
+                "technical_skills": technical_score,
+                "soft_skills": soft_skills_score,
+                "experience": experience_score,
+                "education": education_score
+            },
+            "weights": weights,
+            "industry": job_category
+        }
+
     def _generate_flexible_feedback(self, quality_analysis: Dict, parsed_cv: ParsedCV, ml_insights: Dict, jd_skills: List[str], job_category: str, overall_score: int = None) -> str:
         """BƯỚC 5: Tạo feedback linh hoạt dựa trên phân tích"""
         # Sử dụng overall_score đã được tính trước đó
@@ -700,6 +783,237 @@ class CVEvaluationService:
         except Exception as e:
             print(f"❌ Lỗi khi tạo gợi ý cải thiện: {e}")
             return ["Cần cải thiện CV để phù hợp hơn với yêu cầu công việc"]
+
+    def _analyze_skill_gaps(self, cv_skills: List[str], jd_skills: List[str], job_category: str) -> dict:
+        """Phân tích skill gaps chi tiết"""
+        
+        # Get missing skills
+        missing_skills = [skill for skill in jd_skills if skill not in cv_skills]
+        
+        # Categorize missing skills by priority
+        skill_priorities = {
+            "INFORMATION-TECHNOLOGY": {
+                "critical": ["JavaScript", "Python", "SQL", "Git", "React", "Node.js", "AWS", "Docker"],
+                "important": ["TypeScript", "Vue.js", "MongoDB", "PostgreSQL", "Docker", "Kubernetes"],
+                "nice_to_have": ["GraphQL", "Redis", "Elasticsearch", "Machine Learning"]
+            },
+            "MARKETING": {
+                "critical": ["Google Ads", "Facebook Ads", "SEO", "Content Marketing", "Analytics"],
+                "important": ["Email Marketing", "Social Media", "PPC", "Conversion Optimization"],
+                "nice_to_have": ["Marketing Automation", "Influencer Marketing", "Video Marketing"]
+            },
+            "FINANCE": {
+                "critical": ["Excel", "Financial Modeling", "Accounting", "Analysis"],
+                "important": ["SAP", "Oracle", "QuickBooks", "Risk Management"],
+                "nice_to_have": ["Python", "R", "Tableau", "Power BI"]
+            },
+            "HUMAN-RESOURCES": {
+                "critical": ["Recruitment", "Employee Relations", "HR Policies", "Compliance"],
+                "important": ["HRIS", "Performance Management", "Training", "Benefits"],
+                "nice_to_have": ["HR Analytics", "Diversity & Inclusion", "Organizational Development"]
+            },
+            "SALES": {
+                "critical": ["CRM", "Sales Techniques", "Negotiation", "Lead Generation"],
+                "important": ["Salesforce", "Pipeline Management", "Customer Success"],
+                "nice_to_have": ["Sales Analytics", "Social Selling", "Account Management"]
+            },
+            "HEALTHCARE": {
+                "critical": ["Patient Care", "Clinical Skills", "Medical Records", "Compliance"],
+                "important": ["EMR Systems", "Medical Terminology", "Patient Assessment"],
+                "nice_to_have": ["Telemedicine", "Healthcare Analytics", "Quality Improvement"]
+            },
+            "EDUCATION": {
+                "critical": ["Teaching", "Curriculum Development", "Student Assessment", "Classroom Management"],
+                "important": ["LMS", "Educational Technology", "Lesson Planning"],
+                "nice_to_have": ["Online Teaching", "Educational Research", "Special Education"]
+            },
+            "DESIGN": {
+                "critical": ["Adobe Creative Suite", "UI/UX Design", "Visual Design", "Typography"],
+                "important": ["Figma", "Sketch", "Prototyping", "User Research"],
+                "nice_to_have": ["Motion Graphics", "3D Design", "Brand Strategy"]
+            }
+        }
+        
+        priorities = skill_priorities.get(job_category.upper(), skill_priorities["INFORMATION-TECHNOLOGY"])
+        
+        # Categorize missing skills
+        critical_gaps = [skill for skill in missing_skills if skill in priorities["critical"]]
+        important_gaps = [skill for skill in missing_skills if skill in priorities["important"]]
+        nice_to_have_gaps = [skill for skill in missing_skills if skill in priorities["nice_to_have"]]
+        other_gaps = [skill for skill in missing_skills if skill not in priorities["critical"] + priorities["important"] + priorities["nice_to_have"]]
+        
+        # Calculate gap severity
+        total_critical = len(priorities["critical"])
+        total_important = len(priorities["important"])
+        
+        critical_severity = len(critical_gaps) / total_critical if total_critical > 0 else 0
+        important_severity = len(important_gaps) / total_important if total_important > 0 else 0
+        
+        overall_gap_severity = (critical_severity * 0.6) + (important_severity * 0.4)
+        
+        return {
+            "critical_gaps": critical_gaps,
+            "important_gaps": important_gaps,
+            "nice_to_have_gaps": nice_to_have_gaps,
+            "other_gaps": other_gaps,
+            "gap_severity": {
+                "critical": critical_severity,
+                "important": important_severity,
+                "overall": overall_gap_severity
+            },
+            "total_missing": len(missing_skills),
+            "total_required": len(jd_skills)
+        }
+
+    def _generate_comprehensive_report(self, analysis_result: dict, job_category: str, job_position: str) -> dict:
+        """Tạo comprehensive analysis report với industry insights"""
+        
+        # Extract key metrics
+        overall_score = analysis_result.get('overall_score', 0)
+        ats_score = analysis_result.get('ats_score', 0)
+        skills_match_score = analysis_result.get('skills_match_score', 0)
+        quality_score = analysis_result.get('quality_score', 0)
+        
+        # Industry-specific insights
+        industry_insights = {
+            "INFORMATION-TECHNOLOGY": {
+                "market_demand": "Cao",
+                "salary_range": "15-70M+ VND",
+                "growth_rate": "15-20% annually",
+                "key_trends": ["Cloud Computing", "AI/ML", "DevOps", "Cybersecurity"],
+                "learning_path": "Online courses → Certifications → Projects → Open Source",
+                "career_progression": "Junior → Mid → Senior → Lead → Architect"
+            },
+            "MARKETING": {
+                "market_demand": "Cao",
+                "salary_range": "12-50M+ VND",
+                "growth_rate": "12-18% annually",
+                "key_trends": ["Digital Marketing", "Social Commerce", "Marketing Automation", "Data Analytics"],
+                "learning_path": "Certifications → Campaigns → Case Studies → Portfolio",
+                "career_progression": "Assistant → Specialist → Manager → Director"
+            },
+            "FINANCE": {
+                "market_demand": "Ổn định",
+                "salary_range": "15-60M+ VND",
+                "growth_rate": "8-12% annually",
+                "key_trends": ["Fintech", "ESG Investing", "Automation", "Risk Management"],
+                "learning_path": "Certifications → Industry Experience → Specialization",
+                "career_progression": "Analyst → Senior Analyst → Manager → Director"
+            },
+            "HUMAN-RESOURCES": {
+                "market_demand": "Ổn định",
+                "salary_range": "12-50M+ VND",
+                "growth_rate": "10-15% annually",
+                "key_trends": ["HR Tech", "Remote Work", "Employee Experience", "Diversity & Inclusion"],
+                "learning_path": "HR Certifications → Industry Experience → Specialization",
+                "career_progression": "Assistant → Specialist → Manager → Director"
+            },
+            "SALES": {
+                "market_demand": "Cao",
+                "salary_range": "15-80M+ VND",
+                "growth_rate": "12-20% annually",
+                "key_trends": ["Digital Sales", "Social Selling", "Customer Success", "Sales Analytics"],
+                "learning_path": "Sales Training → Industry Knowledge → Networking",
+                "career_progression": "Sales Rep → Senior Rep → Manager → Director"
+            },
+            "HEALTHCARE": {
+                "market_demand": "Cao",
+                "salary_range": "20-80M+ VND",
+                "growth_rate": "15-25% annually",
+                "key_trends": ["Telemedicine", "AI Diagnostics", "Personalized Medicine", "Digital Health"],
+                "learning_path": "Medical Certifications → Continuing Education → Specialization",
+                "career_progression": "Junior Staff → Senior Staff → Specialist → Director"
+            },
+            "EDUCATION": {
+                "market_demand": "Ổn định",
+                "salary_range": "15-60M+ VND",
+                "growth_rate": "8-12% annually",
+                "key_trends": ["EdTech", "Blended Learning", "Personalized Education", "Online Teaching"],
+                "learning_path": "Teaching Certifications → Subject Expertise → Technology Skills",
+                "career_progression": "Teacher → Senior Teacher → Coordinator → Principal"
+            },
+            "DESIGN": {
+                "market_demand": "Cao",
+                "salary_range": "15-70M+ VND",
+                "growth_rate": "12-18% annually",
+                "key_trends": ["UX/UI Design", "Sustainable Design", "Digital Transformation", "Brand Strategy"],
+                "learning_path": "Design Courses → Software Mastery → Portfolio Building",
+                "career_progression": "Junior Designer → Senior Designer → Art Director → Creative Director"
+            }
+        }
+        
+        insights = industry_insights.get(job_category.upper(), industry_insights["INFORMATION-TECHNOLOGY"])
+        
+        # Generate recommendations based on score
+        if overall_score >= 80:
+            recommendation_level = "Excellent"
+            recommendation = "CV rất phù hợp với yêu cầu công việc. Có thể apply ngay."
+        elif overall_score >= 60:
+            recommendation_level = "Good"
+            recommendation = "CV khá phù hợp. Cần cải thiện một số điểm nhỏ."
+        elif overall_score >= 40:
+            recommendation_level = "Fair"
+            recommendation = "CV cần cải thiện đáng kể để phù hợp hơn."
+        else:
+            recommendation_level = "Poor"
+            recommendation = "CV cần cải thiện nhiều để đáp ứng yêu cầu."
+        
+        return {
+            "overall_assessment": {
+                "score": overall_score,
+                "level": recommendation_level,
+                "recommendation": recommendation
+            },
+            "component_scores": {
+                "ats_score": ats_score,
+                "skills_match_score": skills_match_score,
+                "quality_score": quality_score
+            },
+            "industry_insights": insights,
+            "market_analysis": {
+                "demand": insights["market_demand"],
+                "salary_range": insights["salary_range"],
+                "growth_rate": insights["growth_rate"],
+                "key_trends": insights["key_trends"]
+            },
+            "career_guidance": {
+                "learning_path": insights["learning_path"],
+                "career_progression": insights["career_progression"],
+                "next_steps": self._get_next_steps(overall_score, job_category)
+            }
+        }
+    
+    def _get_next_steps(self, score: float, job_category: str) -> List[str]:
+        """Đưa ra next steps dựa trên score và ngành nghề"""
+        
+        if score >= 80:
+            return [
+                "Chuẩn bị cho interview",
+                "Research về company culture",
+                "Practice common interview questions",
+                "Update portfolio với latest projects"
+            ]
+        elif score >= 60:
+            return [
+                "Học thêm missing skills quan trọng",
+                "Cải thiện CV format và content",
+                "Thực hành projects để build portfolio",
+                "Network với professionals trong ngành"
+            ]
+        elif score >= 40:
+            return [
+                "Học fundamental skills của ngành",
+                "Tham gia online courses và certifications",
+                "Build practical projects",
+                "Tìm mentor để hướng dẫn"
+            ]
+        else:
+            return [
+                "Học basic skills cần thiết",
+                "Tham gia bootcamp hoặc training program",
+                "Build foundation knowledge",
+                "Tìm entry-level positions để gain experience"
+            ]
 
 # Test function
 if __name__ == "__main__":

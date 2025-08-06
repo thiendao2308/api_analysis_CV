@@ -264,69 +264,85 @@ NGÀNH CÔNG NGHỆ THÔNG TIN:
 - Trends: Cloud, AI/ML, DevOps, Security
 - Learning paths: Online courses, certifications, hands-on projects
 - Portfolio: GitHub, technical blogs, open-source contributions
+- Salary ranges: Junior (15-25M), Mid (25-40M), Senior (40-70M+)
+- Career progression: Junior → Mid → Senior → Lead → Architect
 """,
             "MARKETING": f"""
 NGÀNH MARKETING & DIGITAL:
-- Ưu tiên digital marketing skills và analytics
-- Chú ý platform-specific knowledge và campaign management
-- Soft skills: Creativity, communication, data analysis
-- Trends: Social media, content marketing, automation
-- Learning paths: Certifications (Google, Facebook, HubSpot), practical campaigns
-- Portfolio: Case studies, campaign results, content samples
+- Ưu tiên digital marketing skills và data analytics
+- Chú ý platform-specific knowledge (Google, Facebook, TikTok)
+- Soft skills: Creativity, communication, data-driven thinking
+- Trends: Social commerce, influencer marketing, automation
+- Learning paths: Certifications (Google Ads, Facebook Blueprint), practical campaigns
+- Portfolio: Campaign case studies, ROI reports, creative samples
+- Salary ranges: Junior (12-20M), Mid (20-35M), Senior (35-50M+)
+- Career progression: Marketing Assistant → Specialist → Manager → Director
 """,
             "FINANCE": f"""
 NGÀNH TÀI CHÍNH & KẾ TOÁN:
-- Ưu tiên financial analysis và regulatory knowledge
-- Chú ý software proficiency và compliance
-- Soft skills: Attention to detail, analytical thinking, ethics
-- Trends: Fintech, automation, data analytics
-- Learning paths: Professional certifications (CFA, CPA), industry software
-- Portfolio: Financial models, analysis reports, compliance experience
+- Ưu tiên financial modeling và regulatory knowledge
+- Chú ý software proficiency (Excel, SAP, Oracle)
+- Soft skills: Attention to detail, analytical thinking, compliance
+- Trends: Fintech, automation, ESG investing
+- Learning paths: Professional certifications (CFA, CPA), industry experience
+- Portfolio: Financial models, analysis reports, compliance documentation
+- Salary ranges: Junior (15-25M), Mid (25-40M), Senior (40-60M+)
+- Career progression: Analyst → Senior Analyst → Manager → Director
 """,
             "HUMAN-RESOURCES": f"""
 NGÀNH NHÂN SỰ & TUYỂN DỤNG:
 - Ưu tiên HR processes và employee relations
 - Chú ý HRIS systems và compliance knowledge
-- Soft skills: Communication, empathy, conflict resolution
-- Trends: HR tech, remote work, diversity & inclusion
-- Learning paths: HR certifications, industry software training
-- Portfolio: HR projects, employee satisfaction metrics, recruitment success
-""",
-            "DESIGN": f"""
-NGÀNH THIẾT KẾ & SÁNG TẠO:
-- Ưu tiên design tools và creative skills
-- Chú ý portfolio quality và design thinking
-- Soft skills: Creativity, attention to detail, client communication
-- Trends: UI/UX, digital design, brand identity
-- Learning paths: Design courses, tool mastery, portfolio building
-- Portfolio: Design projects, case studies, creative process documentation
+- Soft skills: Empathy, communication, conflict resolution
+- Trends: Remote work, employee experience, AI in HR
+- Learning paths: HR certifications, psychology courses, legal knowledge
+- Portfolio: HR policies, employee programs, recruitment strategies
+- Salary ranges: Junior (12-20M), Mid (20-35M), Senior (35-50M+)
+- Career progression: HR Assistant → Specialist → Manager → Director
 """,
             "SALES": f"""
 NGÀNH BÁN HÀNG & KINH DOANH:
 - Ưu tiên sales techniques và customer relationship
-- Chú ý CRM systems và sales metrics
-- Soft skills: Negotiation, communication, persistence
-- Trends: Digital sales, social selling, data-driven sales
-- Learning paths: Sales training, CRM certifications, industry knowledge
-- Portfolio: Sales achievements, client testimonials, revenue growth
+- Chú ý CRM systems và sales methodologies
+- Soft skills: Negotiation, persuasion, relationship building
+- Trends: Digital sales, consultative selling, customer success
+- Learning paths: Sales training, industry knowledge, networking
+- Portfolio: Sales achievements, client testimonials, pipeline management
+- Salary ranges: Junior (15-25M), Mid (25-45M), Senior (45-80M+)
+- Career progression: Sales Rep → Senior Rep → Manager → Director
 """,
             "HEALTHCARE": f"""
 NGÀNH Y TẾ & CHĂM SÓC SỨC KHỎE:
-- Ưu tiên clinical skills và patient care
-- Chú ý medical systems và regulatory compliance
-- Soft skills: Empathy, attention to detail, stress management
-- Trends: Telemedicine, digital health, patient data management
-- Learning paths: Medical certifications, continuing education, technology training
-- Portfolio: Patient care experience, clinical outcomes, quality metrics
+- Ưu tiên clinical knowledge và patient care
+- Chú ý EMR systems và medical protocols
+- Soft skills: Empathy, patience, attention to detail
+- Trends: Telemedicine, AI diagnostics, personalized medicine
+- Learning paths: Medical certifications, continuing education, specialization
+- Portfolio: Clinical experience, patient outcomes, research contributions
+- Salary ranges: Junior (20-30M), Mid (30-50M), Senior (50-80M+)
+- Career progression: Junior Staff → Senior Staff → Specialist → Director
 """,
             "EDUCATION": f"""
 NGÀNH GIÁO DỤC & ĐÀO TẠO:
-- Ưu tiên teaching skills và curriculum development
-- Chú ý educational technology và student assessment
-- Soft skills: Communication, patience, adaptability
-- Trends: Online learning, personalized education, edtech
-- Learning paths: Teaching certifications, technology training, pedagogy courses
-- Portfolio: Teaching experience, student outcomes, curriculum projects
+- Ưu tiên pedagogical skills và curriculum development
+- Chú ý LMS platforms và assessment methods
+- Soft skills: Patience, communication, adaptability
+- Trends: EdTech, blended learning, personalized education
+- Learning paths: Teaching certifications, subject expertise, technology skills
+- Portfolio: Lesson plans, student outcomes, innovative teaching methods
+- Salary ranges: Junior (15-25M), Mid (25-40M), Senior (40-60M+)
+- Career progression: Teacher → Senior Teacher → Coordinator → Principal
+""",
+            "DESIGN": f"""
+NGÀNH THIẾT KẾ & SÁNG TẠO:
+- Ưu tiên design skills và creative thinking
+- Chú ý design tools và industry trends
+- Soft skills: Creativity, collaboration, client communication
+- Trends: UX/UI design, sustainable design, digital transformation
+- Learning paths: Design courses, software mastery, portfolio building
+- Portfolio: Design projects, client work, creative concepts
+- Salary ranges: Junior (15-25M), Mid (25-45M), Senior (45-70M+)
+- Career progression: Junior Designer → Senior Designer → Art Director → Creative Director
 """
         }
         
@@ -337,4 +353,6 @@ NGÀNH {job_category.upper()}:
 - Soft skills phù hợp với {job_position}
 - Learning paths: Industry certifications, practical experience
 - Portfolio: Relevant projects và achievements
+- Salary ranges: Junior (12-25M), Mid (25-45M), Senior (45-70M+)
+- Career progression: Junior → Mid → Senior → Lead → Director
 """) 
