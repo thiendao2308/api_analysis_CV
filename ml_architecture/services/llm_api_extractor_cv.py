@@ -50,36 +50,93 @@ def extract_cv_info_from_text(cv_text):
         return "{}"
 
 def extract_skills_from_cv(cv_text):
-    """Trích xuất skills từ CV text sử dụng LLM"""
     logger.info(f"Starting LLM CV skills extraction for text length: {len(cv_text)}")
     
     if not OPENAI_API_KEY:
-        logger.warning("OpenAI API key not found, skipping LLM skills extraction")
+        logger.warning("OpenAI API key not found, skipping LLM CV extraction")
         return ""
     
     try:
-        prompt = (
-            "Extract all technical skills, programming languages, frameworks, tools, and technologies "
-            "from the CV text below. Focus on technical and professional skills that would be relevant "
-            "for job applications.\n\n"
-            "Return only a comma-separated list of skills, without any additional text or formatting.\n\n"
-            f"CV Text:\n\"\"\"\n{cv_text}\n\"\"\"\n"
-        )
+        prompt = f"""
+Bạn là chuyên gia trích xuất skills từ CV cho nhiều ngành nghề. Hãy phân tích CV và trích xuất tất cả skills liên quan.
+
+CV TEXT:
+{cv_text}
+
+HƯỚNG DẪN TRÍCH XUẤT THEO NGÀNH NGHỀ:
+
+1. CÔNG NGHỆ THÔNG TIN:
+   - Technical skills: Programming languages, frameworks, databases, cloud platforms
+   - Tools: Git, Docker, Jenkins, AWS, Azure, etc.
+   - Soft skills: Problem-solving, analytical thinking, teamwork
+   - Certifications: AWS, Azure, Google Cloud, etc.
+
+2. MARKETING & DIGITAL:
+   - Digital platforms: Facebook Ads, Google Ads, Instagram, LinkedIn
+   - Tools: Canva, Photoshop, Google Analytics, HubSpot
+   - Skills: SEO, content creation, social media management
+   - Analytics: Data analysis, campaign performance, ROI tracking
+
+3. TÀI CHÍNH & KẾ TOÁN:
+   - Software: Excel, QuickBooks, SAP, Oracle
+   - Skills: Financial modeling, risk analysis, compliance
+   - Certifications: CFA, CPA, ACCA, etc.
+   - Knowledge: GAAP, IFRS, tax regulations
+
+4. NHÂN SỰ & TUYỂN DỤNG:
+   - Systems: HRIS, ATS, payroll systems
+   - Processes: Recruitment, onboarding, performance management
+   - Skills: Employee relations, conflict resolution, training
+   - Knowledge: Labor laws, HR policies, compliance
+
+5. THIẾT KẾ & SÁNG TẠO:
+   - Tools: Photoshop, Illustrator, Figma, Sketch
+   - Skills: UI/UX design, brand identity, visual communication
+   - Portfolio: Design projects, creative process
+   - Knowledge: Design principles, color theory, typography
+
+6. BÁN HÀNG & KINH DOANH:
+   - Systems: CRM, Salesforce, HubSpot
+   - Skills: Negotiation, lead generation, customer relationship
+   - Knowledge: Sales techniques, market analysis, business development
+   - Metrics: Sales targets, conversion rates, revenue growth
+
+7. Y TẾ & CHĂM SÓC SỨC KHỎE:
+   - Systems: EMR, patient management, medical software
+   - Skills: Patient care, clinical procedures, medical documentation
+   - Knowledge: Medical terminology, healthcare regulations
+   - Certifications: Medical licenses, specialized training
+
+8. GIÁO DỤC & ĐÀO TẠO:
+   - Platforms: LMS, online teaching tools, educational software
+   - Skills: Curriculum development, student assessment, teaching methods
+   - Knowledge: Pedagogy, educational psychology, learning theories
+   - Certifications: Teaching licenses, educational technology
+
+NGUYÊN TẮC TRÍCH XUẤT:
+- Trích xuất cả technical và soft skills
+- Bao gồm tools, platforms, certifications
+- Chú ý đến industry-specific terminology
+- Loại bỏ skills quá chung chung hoặc không liên quan
+- Ưu tiên skills có thể đo lường được
+
+TRẢ VỀ: Danh sách skills được phân tách bằng dấu phẩy, không có giải thích thêm.
+"""
         
-        logger.info("Making OpenAI API call for CV skills...")
+        logger.info("Making OpenAI API call...")
         
         # Use new OpenAI API format for openai>=1.0.0
         client = openai.OpenAI(api_key=OPENAI_API_KEY)
         response = client.chat.completions.create(
             model="gpt-3.5-turbo",
             messages=[{"role": "user", "content": prompt}],
-            max_tokens=500,
-            temperature=0.1,
+            max_tokens=2000,
+            temperature=0.2,
         )
         
-        content = response.choices[0].message.content.strip()
-        logger.info(f"✅ LLM CV skills extraction successful, extracted skills: {content}")
-        return content
+        skills = response.choices[0].message.content.strip()
+        logger.info(f"✅ LLM CV skills extraction successful, response length: {len(skills)}")
+        return skills
         
     except Exception as e:
         logger.error(f"❌ LLM CV skills extraction failed: {e}")

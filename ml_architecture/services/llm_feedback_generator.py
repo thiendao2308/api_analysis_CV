@@ -51,14 +51,14 @@ class LLMFeedbackGenerator:
             return self._generate_fallback_feedback(cv_analysis, jd_analysis, matching_analysis, quality_analysis, overall_score)
     
     def _prepare_context(self, cv_analysis: Dict, jd_analysis: Dict, matching_analysis: Dict, quality_analysis: Dict, overall_score: float, job_category: str, job_position: str) -> str:
-        """Prepare context for LLM"""
+        """Prepare context for LLM với tối ưu cho đa ngành nghề"""
         
         # Extract key information
         cv_skills = cv_analysis.get('skills', [])
         jd_skills = jd_analysis.get('extracted_skills', [])
         matching_skills = matching_analysis.get('matching_skills', [])
         missing_skills = matching_analysis.get('missing_skills', [])
-        skills_match_score = matching_analysis.get('skills_match_score', 0)
+        skills_match_score = matching_analysis.get('match_score', 0)
         
         quality_score = quality_analysis.get('quality_score', 0)
         strengths = quality_analysis.get('strengths', [])
@@ -69,6 +69,9 @@ class LLMFeedbackGenerator:
         cv_experience = cv_analysis.get('experience', [])
         cv_education = cv_analysis.get('education', [])
         cv_projects = cv_analysis.get('projects', [])
+        
+        # Industry-specific guidance
+        industry_guidance = self._get_industry_guidance(job_category, job_position)
         
         context = f"""
 PHÂN TÍCH CV-JD CHO VỊ TRÍ: {job_position} - NGÀNH: {job_category}
@@ -96,26 +99,30 @@ PHÂN TÍCH CHI TIẾT:
 - Khớp chính xác: {len(matching_skills)}/{len(jd_skills)} kỹ năng
 - Thiếu {len(missing_skills)} kỹ năng quan trọng
 
-YÊU CẦU: Hãy đưa ra feedback chân thật, cụ thể và hữu ích cho ứng viên. Feedback phải:
-1. Chân thật - không quá lạc quan hay bi quan
-2. Cụ thể - chỉ ra điểm mạnh/yếu cụ thể dựa trên missing skills
-3. Hữu ích - đưa ra gợi ý thực tế để cải thiện missing skills
-4. Cân bằng - vừa động viên vừa chỉ ra điểm cần cải thiện
-5. Phù hợp với ngành nghề {job_category} và vị trí {job_position}
+HƯỚNG DẪN THEO NGÀNH NGHỀ:
+{industry_guidance}
 
-Đặc biệt chú ý:
-- Nếu missing skills nhiều: đưa ra lộ trình học tập cụ thể
-- Nếu matching skills ít: gợi ý cách highlight skills hiện có
-- Nếu overall score thấp: đưa ra priority actions rõ ràng
+YÊU CẦU FEEDBACK:
+1. CHÂN THẬT - Đánh giá dựa trên thực tế missing skills và industry standards
+2. CỤ THỂ - Chỉ ra điểm mạnh/yếu dựa trên industry-specific requirements
+3. HỮU ÍCH - Đưa ra gợi ý thực tế phù hợp với ngành nghề {job_category}
+4. CÂN BẰNG - Vừa động viên vừa chỉ ra điểm cần cải thiện
+5. INDUSTRY-AWARE - Phù hợp với trends và requirements của ngành {job_category}
+
+ĐẶC BIỆT CHÚ Ý:
+- Nếu missing skills nhiều: Đưa ra lộ trình học tập cụ thể cho ngành {job_category}
+- Nếu matching skills ít: Gợi ý cách highlight skills hiện có phù hợp với {job_position}
+- Nếu overall score thấp: Đưa ra priority actions rõ ràng cho ngành {job_category}
+- Industry trends: Cập nhật xu hướng mới nhất trong ngành {job_category}
 
 Hãy trả về JSON format:
 {{
-    "overall_assessment": "Đánh giá tổng quan chân thật dựa trên missing skills",
-    "strengths": ["Điểm mạnh cụ thể 1", "Điểm mạnh cụ thể 2"],
-    "weaknesses": ["Điểm yếu cụ thể dựa trên missing skills 1", "Điểm yếu cụ thể 2"],
-    "specific_suggestions": ["Gợi ý cụ thể để học missing skills 1", "Gợi ý cụ thể 2"],
-    "priority_actions": ["Hành động ưu tiên để cải thiện 1", "Hành động ưu tiên 2"],
-    "encouragement": "Lời động viên chân thành dựa trên potential"
+    "overall_assessment": "Đánh giá tổng quan chân thật dựa trên missing skills và industry standards",
+    "strengths": ["Điểm mạnh cụ thể phù hợp với ngành {job_category} 1", "Điểm mạnh cụ thể 2"],
+    "weaknesses": ["Điểm yếu cụ thể dựa trên missing skills và industry requirements 1", "Điểm yếu cụ thể 2"],
+    "specific_suggestions": ["Gợi ý cụ thể để học missing skills phù hợp với ngành {job_category} 1", "Gợi ý cụ thể 2"],
+    "priority_actions": ["Hành động ưu tiên để cải thiện phù hợp với {job_position} 1", "Hành động ưu tiên 2"],
+    "encouragement": "Lời động viên chân thành dựa trên potential và industry opportunities"
 }}
 """
         return context
@@ -244,3 +251,90 @@ Hãy đưa ra 1-2 câu feedback ngắn gọn, chân thật và động viên cho
             return "CV cần được cải thiện để tăng cơ hội thành công."
         else:
             return "CV cần được cải thiện đáng kể. Hãy tập trung vào việc phát triển kỹ năng." 
+
+    def _get_industry_guidance(self, job_category: str, job_position: str) -> str:
+        """Tạo industry-specific guidance cho từng ngành nghề"""
+        
+        guidance_map = {
+            "INFORMATION-TECHNOLOGY": f"""
+NGÀNH CÔNG NGHỆ THÔNG TIN:
+- Ưu tiên technical skills và latest technologies
+- Chú ý framework versions và tool ecosystems
+- Soft skills: Problem-solving, analytical thinking
+- Trends: Cloud, AI/ML, DevOps, Security
+- Learning paths: Online courses, certifications, hands-on projects
+- Portfolio: GitHub, technical blogs, open-source contributions
+""",
+            "MARKETING": f"""
+NGÀNH MARKETING & DIGITAL:
+- Ưu tiên digital marketing skills và analytics
+- Chú ý platform-specific knowledge và campaign management
+- Soft skills: Creativity, communication, data analysis
+- Trends: Social media, content marketing, automation
+- Learning paths: Certifications (Google, Facebook, HubSpot), practical campaigns
+- Portfolio: Case studies, campaign results, content samples
+""",
+            "FINANCE": f"""
+NGÀNH TÀI CHÍNH & KẾ TOÁN:
+- Ưu tiên financial analysis và regulatory knowledge
+- Chú ý software proficiency và compliance
+- Soft skills: Attention to detail, analytical thinking, ethics
+- Trends: Fintech, automation, data analytics
+- Learning paths: Professional certifications (CFA, CPA), industry software
+- Portfolio: Financial models, analysis reports, compliance experience
+""",
+            "HUMAN-RESOURCES": f"""
+NGÀNH NHÂN SỰ & TUYỂN DỤNG:
+- Ưu tiên HR processes và employee relations
+- Chú ý HRIS systems và compliance knowledge
+- Soft skills: Communication, empathy, conflict resolution
+- Trends: HR tech, remote work, diversity & inclusion
+- Learning paths: HR certifications, industry software training
+- Portfolio: HR projects, employee satisfaction metrics, recruitment success
+""",
+            "DESIGN": f"""
+NGÀNH THIẾT KẾ & SÁNG TẠO:
+- Ưu tiên design tools và creative skills
+- Chú ý portfolio quality và design thinking
+- Soft skills: Creativity, attention to detail, client communication
+- Trends: UI/UX, digital design, brand identity
+- Learning paths: Design courses, tool mastery, portfolio building
+- Portfolio: Design projects, case studies, creative process documentation
+""",
+            "SALES": f"""
+NGÀNH BÁN HÀNG & KINH DOANH:
+- Ưu tiên sales techniques và customer relationship
+- Chú ý CRM systems và sales metrics
+- Soft skills: Negotiation, communication, persistence
+- Trends: Digital sales, social selling, data-driven sales
+- Learning paths: Sales training, CRM certifications, industry knowledge
+- Portfolio: Sales achievements, client testimonials, revenue growth
+""",
+            "HEALTHCARE": f"""
+NGÀNH Y TẾ & CHĂM SÓC SỨC KHỎE:
+- Ưu tiên clinical skills và patient care
+- Chú ý medical systems và regulatory compliance
+- Soft skills: Empathy, attention to detail, stress management
+- Trends: Telemedicine, digital health, patient data management
+- Learning paths: Medical certifications, continuing education, technology training
+- Portfolio: Patient care experience, clinical outcomes, quality metrics
+""",
+            "EDUCATION": f"""
+NGÀNH GIÁO DỤC & ĐÀO TẠO:
+- Ưu tiên teaching skills và curriculum development
+- Chú ý educational technology và student assessment
+- Soft skills: Communication, patience, adaptability
+- Trends: Online learning, personalized education, edtech
+- Learning paths: Teaching certifications, technology training, pedagogy courses
+- Portfolio: Teaching experience, student outcomes, curriculum projects
+"""
+        }
+        
+        return guidance_map.get(job_category.upper(), f"""
+NGÀNH {job_category.upper()}:
+- Tập trung vào industry-specific skills và requirements
+- Chú ý đến latest trends và best practices trong ngành
+- Soft skills phù hợp với {job_position}
+- Learning paths: Industry certifications, practical experience
+- Portfolio: Relevant projects và achievements
+""") 

@@ -4,6 +4,7 @@ import logging
 from typing import List, Dict, Tuple
 from difflib import SequenceMatcher
 from dotenv import load_dotenv
+import re
 
 # Configure logging
 logger = logging.getLogger(__name__)
@@ -66,7 +67,7 @@ class IntelligentJDMatcher:
         return exact_matches
     
     def _find_semantic_matches(self, cv_skills: List[str], jd_skills: List[str], exclude_matches: List[str]) -> List[str]:
-        """Tìm semantic matches sử dụng LLM"""
+        """Tìm semantic matches sử dụng LLM với prompt tối ưu cho đa ngành nghề"""
         if not self.client:
             logger.warning("OpenAI client not available, skipping semantic matching")
             return []
@@ -83,62 +84,116 @@ class IntelligentJDMatcher:
         
         try:
             prompt = f"""
-            Phân tích semantic similarity giữa skills trong CV và JD.
-            
-            Skills trong CV: {', '.join(cv_remaining)}
-            Skills trong JD: {', '.join(jd_remaining)}
-            
-            Tìm các skill từ CV có thể match với JD dựa trên semantic similarity.
-            
-            Ví dụ matching:
-            - ".NET Stack" match "C# .NET Core 6"
-            - "React" match "Frontend Development"
-            - "MongoDB" match "Database Management"
-            - "Git" match "Version Control"
-            - "Photoshop" match "Graphic Design"
-            - "Capcut" match "Video Editing"
-            - "Excel" match "Data Analysis"
-            - "Facebook Ads" match "Digital Marketing"
-            - "SEO" match "Search Engine Optimization"
-            - "Recruitment" match "Talent Acquisition"
-            
-            Trả về tên skill từ CV có thể match, mỗi skill một dòng:
-            """
+Bạn là chuyên gia phân tích skills matching cho nhiều ngành nghề. Hãy phân tích semantic similarity giữa skills CV và JD.
+
+SKILLS CV: {', '.join(cv_remaining)}
+SKILLS JD: {', '.join(jd_remaining)}
+
+QUY TẮC MATCHING THEO NGÀNH NGHỀ:
+
+1. CÔNG NGHỆ THÔNG TIN:
+   - Technology Families: ".NET Stack" ↔ "C# .NET Core 6", "React" ↔ "Vue.js", "MongoDB" ↔ "Database Management"
+   - Framework Equivalents: "ASP.NET Core MVC" ↔ ".NET Framework", "Express.js" ↔ "Node.js"
+   - Tool Equivalents: "Git" ↔ "Version Control", "Postman" ↔ "API Testing"
+
+2. MARKETING & DIGITAL:
+   - Platform Equivalents: "Facebook Ads" ↔ "Social Media Marketing", "Google Ads" ↔ "PPC Campaigns"
+   - Tool Equivalents: "Canva" ↔ "Graphic Design", "Capcut" ↔ "Video Editing"
+   - Skill Equivalents: "SEO" ↔ "Search Engine Optimization", "Content Creation" ↔ "Copywriting"
+
+3. TÀI CHÍNH & KẾ TOÁN:
+   - Software Equivalents: "Excel" ↔ "Data Analysis", "QuickBooks" ↔ "Accounting Software"
+   - Skill Equivalents: "Financial Modeling" ↔ "Excel Advanced", "Audit" ↔ "Financial Analysis"
+
+4. NHÂN SỰ & TUYỂN DỤNG:
+   - Process Equivalents: "Recruitment" ↔ "Talent Acquisition", "HRIS" ↔ "HR Software"
+   - Skill Equivalents: "Employee Relations" ↔ "HR Management", "Performance Review" ↔ "HR Operations"
+
+5. THIẾT KẾ & SÁNG TẠO:
+   - Tool Equivalents: "Photoshop" ↔ "Graphic Design", "Figma" ↔ "UI/UX Design"
+   - Skill Equivalents: "Brand Design" ↔ "Visual Identity", "Illustration" ↔ "Digital Art"
+
+6. BÁN HÀNG & KINH DOANH:
+   - Process Equivalents: "CRM" ↔ "Customer Relationship Management", "Sales Pipeline" ↔ "Lead Management"
+   - Skill Equivalents: "Negotiation" ↔ "Sales Skills", "Market Research" ↔ "Business Analysis"
+
+7. Y TẾ & CHĂM SÓC SỨC KHỎE:
+   - System Equivalents: "EMR" ↔ "Electronic Medical Records", "Patient Care" ↔ "Healthcare Management"
+   - Skill Equivalents: "Clinical Documentation" ↔ "Medical Records", "Patient Assessment" ↔ "Healthcare"
+
+8. GIÁO DỤC & ĐÀO TẠO:
+   - Platform Equivalents: "LMS" ↔ "Learning Management System", "Online Teaching" ↔ "E-learning"
+   - Skill Equivalents: "Curriculum Development" ↔ "Educational Design", "Student Assessment" ↔ "Academic Evaluation"
+
+NGUYÊN TẮC CHUNG:
+- Ưu tiên matching theo technology families và platform equivalents
+- Xem xét skill level tương đương (basic ↔ intermediate ↔ advanced)
+- Chấp nhận partial matches khi có semantic similarity cao
+- Loại trừ matches quá chung chung hoặc không liên quan
+
+TRẢ VỀ: Chỉ tên skill từ CV có thể match, mỗi skill một dòng, format: "Skill Name"
+Ví dụ:
+"ASP.NET Core MVC"
+"Git"
+"ReactJS"
+"""
             
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=500,
+                max_tokens=800,
                 temperature=0.1,
             )
             
             content = response.choices[0].message.content.strip()
             
-            # Parse skills from LLM response (format: "- "Skill" match "JD"" or "- Skill match JD")
+            # Improved parsing logic
             matched_skills = []
             for line in content.split('\n'):
                 line = line.strip()
-                if line.startswith('- ') and 'match' in line:
-                    # Extract skill name from format: "- "Skill" match "JD"" or "- Skill match JD"
-                    try:
-                        # Try with quotes first
-                        if '"' in line:
-                            skill_start = line.find('"') + 1
-                            skill_end = line.find('"', skill_start)
-                            if skill_start > 0 and skill_end > skill_start:
-                                skill_name = line[skill_start:skill_end]
-                                matched_skills.append(skill_name)
-                        else:
-                            # Try without quotes: "- Skill match JD"
-                            parts = line.split('match')
-                            if len(parts) >= 2:
-                                skill_part = parts[0].replace('- ', '').strip()
-                                matched_skills.append(skill_part)
-                    except:
-                        continue
+                if line and not line.startswith('#'):  # Skip comments/headers
+                    # Remove quotes if present
+                    skill_name = line.strip('"').strip("'").strip()
+                    if skill_name and skill_name in cv_remaining:
+                        matched_skills.append(skill_name)
             
-            # Filter to only include skills that are actually in CV
-            semantic_matches = [skill for skill in matched_skills if skill in cv_remaining]
+            # Additional parsing for different formats
+            # Look for patterns like "Skill Name" or "Skill Name match" or "- Skill Name"
+            additional_matches = []
+            
+            # Pattern 1: "Skill Name" (quoted)
+            quoted_pattern = r'"([^"]+)"'
+            quoted_matches = re.findall(quoted_pattern, content)
+            for match in quoted_matches:
+                if match in cv_remaining and match not in matched_skills:
+                    additional_matches.append(match)
+            
+            # Pattern 2: "- Skill Name" (bullet points)
+            bullet_pattern = r'-\s*([^\n]+)'
+            bullet_matches = re.findall(bullet_pattern, content)
+            for match in bullet_matches:
+                skill = match.strip().split()[0]  # Take first word as skill
+                if skill in cv_remaining and skill not in matched_skills:
+                    additional_matches.append(skill)
+            
+            # Pattern 3: "Skill Name match" (explicit matching)
+            match_pattern = r'([A-Za-z\s\.]+)\s+match'
+            explicit_matches = re.findall(match_pattern, content)
+            for match in explicit_matches:
+                skill = match.strip()
+                if skill in cv_remaining and skill not in matched_skills:
+                    additional_matches.append(skill)
+            
+            # Combine all matches
+            matched_skills.extend(additional_matches)
+            
+            # Remove duplicates while preserving order
+            seen = set()
+            semantic_matches = []
+            for skill in matched_skills:
+                if skill not in seen:
+                    seen.add(skill)
+                    semantic_matches.append(skill)
             
             logger.info(f"Found {len(semantic_matches)} semantic matches")
             return semantic_matches
