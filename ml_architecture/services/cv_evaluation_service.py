@@ -369,7 +369,12 @@ class CVEvaluationService:
             
             print(f"✅ BƯỚC 4: Intelligent JD matching - {len(matching_skills)}/{len(jd_skills)} ({skills_match_score:.1f}%)")
             print(f"   - Exact matches: {len(matching_result.get('exact_matches', []))}")
+            print(f"   - Family matches: {len(matching_result.get('family_matches', []))}")
             print(f"   - Semantic matches: {len(matching_result.get('semantic_matches', []))}")
+            
+            # Log family mapping details if available
+            if 'family_mapping_details' in matching_result and matching_result['family_mapping_details']:
+                print(f"   - Family mappings: {matching_result['family_mapping_details'][:3]}...")  # Show first 3
             # BƯỚC 5: Phân tích chất lượng CV
             from ..models.shared_models import ParsedCV
             parsed_cv_obj = ParsedCV(

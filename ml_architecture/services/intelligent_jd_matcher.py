@@ -15,7 +15,7 @@ load_dotenv()
 OPENAI_API_KEY = os.getenv("OPENAI_API_KEY", "")
 
 class IntelligentJDMatcher:
-    """Intelligent JD matching sử dụng LLM để hiểu semantic similarity"""
+    """Intelligent JD matching sử dụng LLM với family mapping và skill normalization"""
     
     def __init__(self):
         self.client = None
@@ -25,38 +25,138 @@ class IntelligentJDMatcher:
                 logger.info("✅ Intelligent JD Matcher initialized with OpenAI")
             except Exception as e:
                 logger.error(f"❌ Failed to initialize OpenAI client: {e}")
+        
+        # Skill family mappings
+        self.skill_families = {
+            "react": ["react", "reactjs", "react.js", "react native"],
+            "vue": ["vue", "vue.js", "vuejs", "nuxt"],
+            "angular": ["angular", "angularjs", "angular.js"],
+            "javascript": ["javascript", "js", "ecmascript", "es6", "es7"],
+            "typescript": ["typescript", "ts"],
+            "node": ["node", "node.js", "nodejs", "express", "express.js"],
+            "dotnet": [".net", "dotnet", "asp.net", "asp.net core", "asp.net mvc", ".net framework", ".net core", "c#"],
+            "sql": ["sql", "mysql", "postgresql", "sql server", "ms sql server", "oracle", "sqlite"],
+            "mongodb": ["mongodb", "mongo", "nosql"],
+            "git": ["git", "github", "gitlab", "bitbucket", "version control"],
+            "docker": ["docker", "container", "kubernetes", "k8s"],
+            "aws": ["aws", "amazon web services", "ec2", "s3", "lambda"],
+            "azure": ["azure", "microsoft azure", "cloud"],
+            "agile": ["agile", "scrum", "kanban", "sprint", "sprint planning"],
+            "devops": ["devops", "ci/cd", "jenkins", "gitlab ci", "github actions"],
+            "api": ["api", "rest api", "graphql", "api integration", "web api"],
+            "html": ["html", "html5"],
+            "css": ["css", "css3", "sass", "scss", "less", "bootstrap", "tailwind"],
+            "php": ["php", "laravel", "codeigniter", "wordpress"],
+            "python": ["python", "django", "flask", "fastapi"],
+            "java": ["java", "spring", "spring boot", "maven", "gradle"],
+            "mobile": ["react native", "flutter", "ionic", "xamarin", "android", "ios"],
+            "testing": ["jest", "mocha", "cypress", "selenium", "unit testing", "integration testing"],
+            "ui_ux": ["ui", "ux", "user interface", "user experience", "figma", "sketch", "adobe xd"],
+            "seo": ["seo", "search engine optimization", "sem", "ppc"],
+            "marketing": ["digital marketing", "social media", "content marketing", "email marketing"],
+            "finance": ["financial modeling", "excel", "quickbooks", "sap", "oracle"],
+            "hr": ["recruitment", "talent acquisition", "hris", "hr software", "employee relations"],
+            "sales": ["crm", "salesforce", "lead generation", "customer relationship"],
+            "healthcare": ["emr", "electronic medical records", "patient care", "clinical"],
+            "education": ["lms", "learning management system", "e-learning", "curriculum development"]
+        }
+    
+    def _normalize_skill(self, skill: str) -> str:
+        """Chuẩn hóa skill name"""
+        skill_lower = skill.lower().strip()
+        
+        # Remove common suffixes/prefixes
+        skill_lower = re.sub(r'\s*\([^)]*\)', '', skill_lower)  # Remove (description)
+        skill_lower = re.sub(r'\s*\[[^\]]*\]', '', skill_lower)  # Remove [version]
+        
+        # Normalize common variations
+        skill_lower = skill_lower.replace('javascript', 'js')
+        skill_lower = skill_lower.replace('reactjs', 'react')
+        skill_lower = skill_lower.replace('vuejs', 'vue')
+        skill_lower = skill_lower.replace('angularjs', 'angular')
+        skill_lower = skill_lower.replace('nodejs', 'node')
+        skill_lower = skill_lower.replace('expressjs', 'express')
+        skill_lower = skill_lower.replace('asp.net', 'dotnet')
+        skill_lower = skill_lower.replace('.net', 'dotnet')
+        skill_lower = skill_lower.replace('sql server', 'sql')
+        skill_lower = skill_lower.replace('ms sql server', 'sql')
+        
+        return skill_lower
+    
+    def _find_skill_family_matches(self, cv_skills: List[str], jd_skills: List[str]) -> List[Tuple[str, str]]:
+        """Tìm matches dựa trên skill families với logic tránh duplicate"""
+        family_matches = []
+        matched_jd_skills = set()  # Track JD skills đã được match
+        
+        cv_normalized = [self._normalize_skill(skill) for skill in cv_skills]
+        jd_normalized = [self._normalize_skill(skill) for skill in jd_skills]
+        
+        for family_name, family_skills in self.skill_families.items():
+            cv_family_matches = []
+            jd_family_matches = []
+            
+            # Find CV skills in this family
+            for i, cv_skill in enumerate(cv_normalized):
+                if any(fs in cv_skill for fs in family_skills):
+                    cv_family_matches.append(cv_skills[i])
+            
+            # Find JD skills in this family (only unmatched ones)
+            for i, jd_skill in enumerate(jd_normalized):
+                if any(fs in jd_skill for fs in family_skills) and jd_skills[i] not in matched_jd_skills:
+                    jd_family_matches.append(jd_skills[i])
+            
+            # Match CV skills to JD skills (one-to-one mapping)
+            if cv_family_matches and jd_family_matches:
+                # Sort by priority (exact matches first, then partial)
+                for cv_skill in cv_family_matches:
+                    for jd_skill in jd_family_matches:
+                        if jd_skill not in matched_jd_skills:
+                            family_matches.append((cv_skill, jd_skill))
+                            matched_jd_skills.add(jd_skill)
+                            break  # Move to next CV skill
+        
+        return family_matches
     
     def intelligent_matching(self, cv_skills: List[str], jd_skills: List[str]) -> Dict:
-        """Intelligent matching giữa CV skills và JD skills"""
+        """Intelligent matching với family mapping và skill normalization"""
         logger.info(f"Starting intelligent JD matching: CV={len(cv_skills)} skills, JD={len(jd_skills)} skills")
         
-        # 1. Exact matches
+        # 1. Exact matches (case-insensitive)
         exact_matches = self._find_exact_matches(cv_skills, jd_skills)
         
-        # 2. Semantic matches (LLM-based)
-        semantic_matches = self._find_semantic_matches(cv_skills, jd_skills, exact_matches)
+        # 2. Family-based matches
+        family_matches = self._find_skill_family_matches(cv_skills, jd_skills)
+        family_matched_cv = [match[0] for match in family_matches]
+        family_matched_jd = [match[1] for match in family_matches]
         
-        # 3. Calculate scores
-        all_matches = exact_matches + semantic_matches
+        # 3. Semantic matches (LLM-based) for remaining skills
+        exclude_cv = exact_matches + family_matched_cv
+        exclude_jd = family_matched_jd
+        semantic_matches = self._find_semantic_matches(cv_skills, jd_skills, exclude_cv, exclude_jd)
+        
+        # 4. Combine all matches
+        all_matches = exact_matches + family_matched_cv + semantic_matches
         missing_skills = self._find_missing_skills(jd_skills, all_matches)
         
-        # 4. Calculate match score
+        # 5. Calculate match score
         match_score = self._calculate_match_score(len(all_matches), len(jd_skills))
         
         return {
             "matching_skills": all_matches,
             "missing_skills": missing_skills,
             "exact_matches": exact_matches,
+            "family_matches": family_matched_cv,
             "semantic_matches": semantic_matches,
             "match_score": match_score,
             "total_cv_skills": len(cv_skills),
-            "total_jd_skills": len(jd_skills)
+            "total_jd_skills": len(jd_skills),
+            "family_mapping_details": family_matches
         }
     
     def _find_exact_matches(self, cv_skills: List[str], jd_skills: List[str]) -> List[str]:
-        """Tìm exact matches"""
-        cv_skills_lower = [skill.lower() for skill in cv_skills]
-        jd_skills_lower = [skill.lower() for skill in jd_skills]
+        """Tìm exact matches với case-insensitive"""
+        cv_skills_lower = [self._normalize_skill(skill) for skill in cv_skills]
+        jd_skills_lower = [self._normalize_skill(skill) for skill in jd_skills]
         
         exact_matches = []
         for cv_skill, cv_lower in zip(cv_skills, cv_skills_lower):
@@ -66,18 +166,19 @@ class IntelligentJDMatcher:
         logger.info(f"Found {len(exact_matches)} exact matches")
         return exact_matches
     
-    def _find_semantic_matches(self, cv_skills: List[str], jd_skills: List[str], exclude_matches: List[str]) -> List[str]:
-        """Tìm semantic matches sử dụng LLM với prompt tối ưu cho đa ngành nghề"""
+    def _find_semantic_matches(self, cv_skills: List[str], jd_skills: List[str], exclude_cv: List[str], exclude_jd: List[str]) -> List[str]:
+        """Tìm semantic matches với enhanced prompt"""
         if not self.client:
             logger.warning("OpenAI client not available, skipping semantic matching")
             return []
         
         semantic_matches = []
-        exclude_lower = [skill.lower() for skill in exclude_matches]
+        exclude_cv_lower = [self._normalize_skill(skill) for skill in exclude_cv]
+        exclude_jd_lower = [self._normalize_skill(skill) for skill in exclude_jd]
         
         # Group skills for batch processing
-        cv_remaining = [skill for skill in cv_skills if skill.lower() not in exclude_lower]
-        jd_remaining = [skill for skill in jd_skills if skill.lower() not in exclude_lower]
+        cv_remaining = [skill for skill in cv_skills if self._normalize_skill(skill) not in exclude_cv_lower]
+        jd_remaining = [skill for skill in jd_skills if self._normalize_skill(skill) not in exclude_jd_lower]
         
         if not cv_remaining or not jd_remaining:
             return semantic_matches
@@ -95,6 +196,7 @@ QUY TẮC MATCHING THEO NGÀNH NGHỀ:
    - Technology Families: ".NET Stack" ↔ "C# .NET Core 6", "React" ↔ "Vue.js", "MongoDB" ↔ "Database Management"
    - Framework Equivalents: "ASP.NET Core MVC" ↔ ".NET Framework", "Express.js" ↔ "Node.js"
    - Tool Equivalents: "Git" ↔ "Version Control", "Postman" ↔ "API Testing"
+   - Skill Equivalents: "JavaScript" ↔ "JS", "TypeScript" ↔ "TS", "HTML5" ↔ "HTML"
 
 2. MARKETING & DIGITAL:
    - Platform Equivalents: "Facebook Ads" ↔ "Social Media Marketing", "Google Ads" ↔ "PPC Campaigns"
@@ -130,6 +232,7 @@ NGUYÊN TẮC CHUNG:
 - Xem xét skill level tương đương (basic ↔ intermediate ↔ advanced)
 - Chấp nhận partial matches khi có semantic similarity cao
 - Loại trừ matches quá chung chung hoặc không liên quan
+- Chú ý đến các biến thể của cùng một skill (ReactJS ↔ React, JavaScript ↔ JS)
 
 TRẢ VỀ: Chỉ tên skill từ CV có thể match, mỗi skill một dòng, format: "Skill Name"
 Ví dụ:
@@ -158,7 +261,6 @@ Ví dụ:
                         matched_skills.append(skill_name)
             
             # Additional parsing for different formats
-            # Look for patterns like "Skill Name" or "Skill Name match" or "- Skill Name"
             additional_matches = []
             
             # Pattern 1: "Skill Name" (quoted)
@@ -204,12 +306,12 @@ Ví dụ:
     
     def _find_missing_skills(self, jd_skills: List[str], matched_skills: List[str]) -> List[str]:
         """Tìm skills còn thiếu"""
-        matched_lower = [skill.lower() for skill in matched_skills]
-        missing = [skill for skill in jd_skills if skill.lower() not in matched_lower]
+        matched_lower = [self._normalize_skill(skill) for skill in matched_skills]
+        missing = [skill for skill in jd_skills if self._normalize_skill(skill) not in matched_lower]
         return missing
     
     def _calculate_match_score(self, matched_count: int, total_jd_skills: int) -> float:
         """Tính match score"""
         if total_jd_skills == 0:
             return 0.0
-        return (matched_count / total_jd_skills) * 100 
+        return min(100.0, (matched_count / total_jd_skills) * 100) 
