@@ -3,11 +3,29 @@ import logging
 import os
 from typing import Dict, List, Optional
 from dotenv import load_dotenv
+import json
+from datetime import datetime
 
 # Load environment variables
 load_dotenv()
 
 logger = logging.getLogger(__name__)
+
+LABELED_DATA_PATH = "ml_architecture/data/labeled/labeled_data.jsonl"
+
+def save_labeled_data(cv_data, jd_data, output_path=LABELED_DATA_PATH):
+    record = {
+        "cv_text": cv_data.get("text"),
+        "cv_skills": cv_data.get("skills"),
+        "education": cv_data.get("education"),
+        "projects": cv_data.get("projects"),
+        "experience": cv_data.get("experience"),
+        "jd_text": jd_data.get("text"),
+        "jd_skills": jd_data.get("skills"),
+        "created_at": datetime.now().isoformat()
+    }
+    with open(output_path, "a", encoding="utf-8") as f:
+        f.write(json.dumps(record, ensure_ascii=False) + "\n")
 
 class WebClientIntegration:
     """Service để tích hợp với web client"""

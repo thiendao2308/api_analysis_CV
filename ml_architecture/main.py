@@ -388,7 +388,21 @@ async def analyze_cv_from_web_client(request: WebClientAnalysisRequest):
             jd_text=jd_content,
             job_requirements=None  # Có thể thêm từ JD content
         )
-        
+        # --- Lưu dữ liệu đã trích xuất (labeled) ---
+        # Lấy thông tin đã trích xuất từ analysis_result
+        cv_labeled = {
+            "text": cv_content,
+            "skills": analysis_result.get("cv_skills"),
+            "education": analysis_result.get("education"),
+            "projects": analysis_result.get("projects"),
+            "experience": analysis_result.get("experience"),
+        }
+        jd_labeled = {
+            "text": jd_content,
+            "skills": analysis_result.get("jd_skills")
+        }
+        save_labeled_data(cv_labeled, jd_labeled)
+        # --- End lưu dữ liệu ---
         # 4. Lưu kết quả phân tích vào web client database
         await save_analysis_result_to_web_client(
             user_id=request.user_id,
@@ -510,7 +524,7 @@ async def analyze_cv_with_job(request: UserCVRequest):
         )
 
 # Import web client integration
-from ml_architecture.services.web_client_integration import WebClientIntegration, MockWebClientIntegration
+from ml_architecture.services.web_client_integration import WebClientIntegration, MockWebClientIntegration, save_labeled_data
 
 # Initialize web client integration
 web_client = MockWebClientIntegration()  # Use mock for development
