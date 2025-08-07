@@ -93,17 +93,17 @@ KẾT QUẢ SO KHỚP:
 - Điểm tổng thể: {overall_score:.1f}/100
 
 YÊU CẦU FEEDBACK:
-1. Viết một đoạn ngắn (1-2 câu) tổng hợp điểm mạnh về kỹ năng của ứng viên (dựa trên các kỹ năng phù hợp nổi bật, không liệt kê hết).
-2. Viết một đoạn ngắn (1-2 câu) tổng hợp điểm cần cải thiện về kỹ năng (dựa trên các kỹ năng thiếu quan trọng, không liệt kê hết).
-3. Gợi ý cải thiện (nếu có).
-4. Đảm bảo feedback ngắn gọn, súc tích, dễ hiểu, không liệt kê toàn bộ danh sách kỹ năng.
+1. Viết 2-3 câu tổng hợp điểm mạnh về kỹ năng, nêu rõ 3-5 kỹ năng phù hợp nổi bật nhất.
+2. Viết 2-3 câu tổng hợp điểm cần cải thiện, nêu rõ 3-5 kỹ năng thiếu quan trọng nhất.
+3. Gợi ý cải thiện cụ thể (2-3 gợi ý).
+4. Đảm bảo feedback chi tiết nhưng không quá dài, dễ hiểu.
 5. Trả về JSON format:
 {{
-  "overall_assessment": "...",
-  "strengths": ["Đoạn tổng hợp điểm mạnh về kỹ năng (không liệt kê hết)"],
-  "weaknesses": ["Đoạn tổng hợp điểm cần cải thiện về kỹ năng (không liệt kê hết)"],
-  "specific_suggestions": ["Gợi ý cải thiện nếu có"],
-  "priority_actions": ["Hành động ưu tiên nếu có"],
+  "overall_assessment": "Đánh giá tổng quan ngắn gọn (1 câu)",
+  "strengths": ["2-3 câu tổng hợp điểm mạnh, nêu rõ 3-5 kỹ năng phù hợp nổi bật"],
+  "weaknesses": ["2-3 câu tổng hợp điểm cần cải thiện, nêu rõ 3-5 kỹ năng thiếu quan trọng"],
+  "specific_suggestions": ["3 gợi ý cải thiện cụ thể"],
+  "priority_actions": ["2 hành động ưu tiên"],
   "encouragement": "Lời động viên ngắn gọn"
 }}
 """
@@ -165,26 +165,37 @@ YÊU CẦU FEEDBACK:
             assessment = "CV của bạn cần được cải thiện đáng kể."
             encouragement = "Hãy xem đây là cơ hội để học hỏi và phát triển."
         
+        # Tạo strengths chi tiết
         strengths = []
         if matching_skills:
-            strengths.append(f"Bạn đã có các kỹ năng phù hợp: {', '.join(matching_skills[:3])}")
+            top_matching = matching_skills[:5]  # Lấy 5 kỹ năng phù hợp nhất
+            strengths.append(f"Bạn có các kỹ năng phù hợp tốt: {', '.join(top_matching)}. Điều này cho thấy bạn đã có nền tảng vững chắc cho vị trí này.")
         
+        # Tạo weaknesses chi tiết
         weaknesses = []
         if missing_skills:
-            weaknesses.append(f"Cần bổ sung: {', '.join(missing_skills[:3])}")
+            top_missing = missing_skills[:5]  # Lấy 5 kỹ năng thiếu quan trọng nhất
+            weaknesses.append(f"Bạn cần bổ sung các kỹ năng quan trọng: {', '.join(top_missing)}. Việc phát triển những kỹ năng này sẽ tăng đáng kể cơ hội thành công.")
         
-        suggestions = [
-            "Hãy làm nổi bật các kỹ năng phù hợp trong CV",
-            "Bổ sung thêm kinh nghiệm thực tế nếu có thể",
-            "Cập nhật CV theo từng vị trí ứng tuyển cụ thể"
-        ]
+        # Tạo suggestions cụ thể
+        suggestions = []
+        if missing_skills:
+            suggestions.append("Hãy làm nổi bật các kỹ năng phù hợp trong CV")
+            suggestions.append("Bổ sung thêm kinh nghiệm thực tế nếu có thể")
+            suggestions.append("Cập nhật CV theo từng vị trí ứng tuyển cụ thể")
+        
+        # Tạo priority actions
+        priority_actions = []
+        if missing_skills:
+            priority_actions.append("Ưu tiên học và thực hành các kỹ năng thiếu")
+            priority_actions.append("Tạo dự án portfolio để chứng minh kỹ năng")
         
         return {
             "overall_assessment": assessment,
             "strengths": strengths,
             "weaknesses": weaknesses,
             "specific_suggestions": suggestions,
-            "priority_actions": ["Cải thiện CV", "Bổ sung kỹ năng"],
+            "priority_actions": priority_actions,
             "encouragement": encouragement
         }
     
