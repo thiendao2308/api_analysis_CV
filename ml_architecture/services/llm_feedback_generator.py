@@ -93,18 +93,18 @@ KẾT QUẢ SO KHỚP:
 - Điểm tổng thể: {overall_score:.1f}/100
 
 YÊU CẦU FEEDBACK:
-1. Viết 3-4 câu tổng hợp điểm mạnh về kỹ năng, nêu rõ 4-6 kỹ năng phù hợp nổi bật nhất và lý do tại sao chúng quan trọng.
-2. Viết 3-4 câu tổng hợp điểm cần cải thiện, nêu rõ 4-6 kỹ năng thiếu quan trọng nhất và tác động của việc thiếu chúng.
-3. Gợi ý cải thiện cụ thể (4-5 gợi ý chi tiết).
-4. Đảm bảo feedback đa chiều, phản ánh nhiều khía cạnh: technical skills, soft skills, experience, learning path.
-5. Trả về JSON format:
+1. Viết 2-3 câu tổng hợp điểm mạnh về kỹ năng, nêu rõ 3-4 kỹ năng phù hợp nổi bật nhất.
+2. Viết 2-3 câu tổng hợp điểm cần cải thiện, nêu rõ 3-4 kỹ năng thiếu quan trọng nhất.
+3. Gợi ý cải thiện cụ thể (3-4 gợi ý ngắn gọn).
+4. Đảm bảo feedback đa chiều nhưng ngắn gọn, dễ hiểu.
+5. Trả về JSON format đầy đủ:
 {{
-  "overall_assessment": "Đánh giá tổng quan chi tiết (2-3 câu)",
-  "strengths": ["3-4 câu tổng hợp điểm mạnh, nêu rõ 4-6 kỹ năng phù hợp nổi bật và lý do quan trọng"],
-  "weaknesses": ["3-4 câu tổng hợp điểm cần cải thiện, nêu rõ 4-6 kỹ năng thiếu quan trọng và tác động"],
-  "specific_suggestions": ["4-5 gợi ý cải thiện chi tiết và cụ thể"],
-  "priority_actions": ["3 hành động ưu tiên với timeline"],
-  "encouragement": "Lời động viên chi tiết và thực tế"
+  "overall_assessment": "Đánh giá tổng quan ngắn gọn (1-2 câu)",
+  "strengths": ["2-3 câu tổng hợp điểm mạnh, nêu rõ 3-4 kỹ năng phù hợp nổi bật"],
+  "weaknesses": ["2-3 câu tổng hợp điểm cần cải thiện, nêu rõ 3-4 kỹ năng thiếu quan trọng"],
+  "specific_suggestions": ["3-4 gợi ý cải thiện ngắn gọn và cụ thể"],
+  "priority_actions": ["2-3 hành động ưu tiên với timeline ngắn"],
+  "encouragement": "Lời động viên ngắn gọn và thực tế"
 }}
 """
         return context
@@ -119,7 +119,7 @@ YÊU CẦU FEEDBACK:
                         "role": "system",
                         "content": """Bạn là một chuyên gia tư vấn CV với 10+ năm kinh nghiệm. 
                         Bạn có khả năng đánh giá chân thật và đưa ra gợi ý hữu ích cho ứng viên.
-                        Hãy luôn trả về JSON format chính xác."""
+                        Hãy luôn trả về JSON format chính xác và đầy đủ."""
                     },
                     {
                         "role": "user",
@@ -127,19 +127,34 @@ YÊU CẦU FEEDBACK:
                     }
                 ],
                 temperature=0.7,
-                max_tokens=1000
+                max_tokens=2000  # Tăng từ 1000 lên 2000
             )
             
             content = response.choices[0].message.content
             logger.info(f"LLM Response: {content}")
             
-            # Parse JSON response
+            # Parse JSON response với error handling tốt hơn
             import json
             try:
+                # Kiểm tra xem response có bị cắt không
+                if not content.strip().endswith('}'):
+                    logger.warning("LLM response appears to be truncated, using fallback")
+                    return self._generate_fallback_feedback({}, {}, {}, {}, 0)
+                
                 feedback_data = json.loads(content)
+                
+                # Validate required fields
+                required_fields = ['overall_assessment', 'strengths', 'weaknesses', 'specific_suggestions', 'priority_actions', 'encouragement']
+                for field in required_fields:
+                    if field not in feedback_data:
+                        logger.warning(f"Missing required field '{field}' in LLM response, using fallback")
+                        return self._generate_fallback_feedback({}, {}, {}, {}, 0)
+                
                 return feedback_data
-            except json.JSONDecodeError:
-                logger.error("Failed to parse LLM response as JSON")
+                
+            except json.JSONDecodeError as e:
+                logger.error(f"Failed to parse LLM response as JSON: {e}")
+                logger.error(f"Response content: {content}")
                 return self._generate_fallback_feedback({}, {}, {}, {}, 0)
                 
         except Exception as e:

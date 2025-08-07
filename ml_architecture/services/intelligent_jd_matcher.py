@@ -244,7 +244,7 @@ Ví dụ:
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",
                 messages=[{"role": "user", "content": prompt}],
-                max_tokens=800,
+                max_tokens=1200,
                 temperature=0.1,
             )
             
