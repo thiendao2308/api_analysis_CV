@@ -98,14 +98,14 @@ YÊU CẦU FEEDBACK:
 3. Gợi ý cải thiện (nếu có).
 4. Đảm bảo feedback ngắn gọn, súc tích, dễ hiểu, không liệt kê toàn bộ danh sách kỹ năng.
 5. Trả về JSON format:
-{
+{{
   "overall_assessment": "...",
   "strengths": ["Đoạn tổng hợp điểm mạnh về kỹ năng (không liệt kê hết)"],
   "weaknesses": ["Đoạn tổng hợp điểm cần cải thiện về kỹ năng (không liệt kê hết)"],
   "specific_suggestions": ["Gợi ý cải thiện nếu có"],
   "priority_actions": ["Hành động ưu tiên nếu có"],
   "encouragement": "Lời động viên ngắn gọn"
-}
+}}
 """
         return context
     

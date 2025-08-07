@@ -507,30 +507,89 @@ class CVEvaluationService:
         cv_title_lower = cv_job_title.lower()
         job_pos_lower = job_position.lower()
         
-        # Mapping job position values to keywords
+        # Mapping job position values to keywords với logic cải thiện
         position_keywords = {
-            "FRONTEND_DEVELOPER": ["frontend", "front-end", "front end", "react", "angular", "vue"],
-            "BACKEND_DEVELOPER": ["backend", "back-end", "back end", "python", "java", "node"],
-            "FULLSTACK_DEVELOPER": ["fullstack", "full-stack", "full stack", "fullstack"],
-            "MOBILE_DEVELOPER": ["mobile", "android", "ios", "flutter", "react native"],
-            "DATA_SCIENTIST": ["data scientist", "data science", "machine learning", "ai"],
-            "DEVOPS_ENGINEER": ["devops", "cloud", "aws", "azure", "docker"],
-            "QA_ENGINEER": ["qa", "quality", "test", "testing"],
-            "UI_UX_DESIGNER": ["ui", "ux", "designer", "user interface"],
-            "SEO_SPECIALIST": ["seo", "search engine", "digital marketing"],
-            "DIGITAL_MARKETING": ["digital marketing", "marketing", "social media"],
-            "SALES_REPRESENTATIVE": ["sales", "representative", "business development"],
-            "HR_SPECIALIST": ["hr", "human resources", "recruitment"],
-            "ACCOUNTANT": ["accountant", "accounting", "finance"],
-            "FINANCIAL_ANALYST": ["financial analyst", "finance", "analysis"],
+            "FRONTEND_DEVELOPER": [
+                "frontend", "front-end", "front end", "react", "angular", "vue",
+                "fullstack", "full-stack", "full stack",  # Full-stack có thể làm Frontend
+                "web developer", "ui developer", "client-side"
+            ],
+            "BACKEND_DEVELOPER": [
+                "backend", "back-end", "back end", "python", "java", "node",
+                "fullstack", "full-stack", "full stack",  # Full-stack có thể làm Backend
+                "server-side", "api developer", "database"
+            ],
+            "FULLSTACK_DEVELOPER": [
+                "fullstack", "full-stack", "full stack", "fullstack developer",
+                "frontend", "backend", "web developer", "full stack developer"
+            ],
+            "MOBILE_DEVELOPER": [
+                "mobile", "android", "ios", "flutter", "react native",
+                "mobile developer", "app developer"
+            ],
+            "DATA_SCIENTIST": [
+                "data scientist", "data science", "machine learning", "ai",
+                "analytics", "statistics", "research"
+            ],
+            "DEVOPS_ENGINEER": [
+                "devops", "cloud", "aws", "azure", "docker",
+                "infrastructure", "system administrator", "platform engineer"
+            ],
+            "QA_ENGINEER": [
+                "qa", "quality", "test", "testing", "quality assurance",
+                "tester", "test engineer"
+            ],
+            "UI_UX_DESIGNER": [
+                "ui", "ux", "designer", "user interface", "user experience",
+                "web designer", "graphic designer"
+            ],
+            "SEO_SPECIALIST": [
+                "seo", "search engine", "digital marketing", "optimization",
+                "marketing specialist"
+            ],
+            "DIGITAL_MARKETING": [
+                "digital marketing", "marketing", "social media",
+                "content marketing", "online marketing"
+            ],
+            "SALES_REPRESENTATIVE": [
+                "sales", "representative", "business development",
+                "account manager", "sales executive"
+            ],
+            "HR_SPECIALIST": [
+                "hr", "human resources", "recruitment", "talent acquisition",
+                "personnel", "employee relations"
+            ],
+            "ACCOUNTANT": [
+                "accountant", "accounting", "finance", "bookkeeper",
+                "financial analyst"
+            ],
+            "FINANCIAL_ANALYST": [
+                "financial analyst", "finance", "analysis", "investment",
+                "financial planning"
+            ],
         }
         
-        # Kiểm tra match
+        # Kiểm tra match với logic cải thiện
         if job_position in position_keywords:
             keywords = position_keywords[job_position]
+            
+            # Kiểm tra exact match
             for keyword in keywords:
                 if keyword in cv_title_lower:
                     return 100  # Perfect match
+            
+            # Kiểm tra fuzzy match cho lỗi chính tả
+            from difflib import SequenceMatcher
+            for keyword in keywords:
+                similarity = SequenceMatcher(None, cv_title_lower, keyword).ratio()
+                if similarity > 0.8:  # 80% similarity
+                    return 90  # High match
+            
+            # Kiểm tra partial match
+            for keyword in keywords:
+                if any(word in cv_title_lower for word in keyword.split()):
+                    return 70  # Good match
+            
             return 30  # Low match
         else:
             # Fallback: kiểm tra từ khóa chung
@@ -566,15 +625,15 @@ class CVEvaluationService:
 
     def _calculate_overall_score(self, ats_score: int, quality_analysis: Dict, cv_skills_count: int, jd_skills_count: int, cv_skills: List[str], jd_skills: List[str], job_category: str, position_match_score: int, matching_result: Dict = None) -> int:
         """
-        Tính điểm tổng thể với logic mới:
-        - ATS Score: 40%
+        Tính điểm tổng thể với logic cải thiện:
+        - ATS Score: 35%
         - Skills Matching: 30%
-        - Position Match: 20%
+        - Position Match: 25%
         - Quality Analysis: 10%
         """
         try:
-            # 1. ATS Score (40%)
-            ats_component = ats_score * 0.4
+            # 1. ATS Score (35%)
+            ats_component = ats_score * 0.35
             
             # 2. Skills Matching (30%) - Sử dụng kết quả từ Intelligent JD Matching
             skills_match = 0
@@ -584,36 +643,30 @@ class CVEvaluationService:
                     # Lấy match score từ intelligent matching
                     skills_match = matching_result.get('match_score', 0)
                 else:
-                    # Fallback: tính theo exact matching
-                    matching_count = len([s for s in cv_skills if s.lower() in [js.lower() for js in jd_skills]])
-                    skills_match = (matching_count / jd_skills_count) * 100
-            skills_component = skills_match * 0.3
+                    # Fallback: tính toán đơn giản
+                    matching_skills = set(cv_skills) & set(jd_skills)
+                    skills_match = (len(matching_skills) / jd_skills_count) * 100 if jd_skills_count > 0 else 0
             
-            # 3. Position Match (20%)
-            position_component = position_match_score * 0.2
+            skills_component = skills_match * 0.30
             
-            # 4. Quality Analysis (10%)
-            quality_score = quality_analysis.get('overall_score', 50)
-            quality_component = quality_score * 0.1
+            # 3. Position Match (25%) - Cải thiện với logic mới
+            position_component = position_match_score * 0.25
             
-            # Tính tổng
+            # 4. Quality Analysis (10%) - Sử dụng quality_score từ CV Quality Analyzer
+            quality_score = quality_analysis.get('quality_score', 0) * 100  # Chuyển về thang 100
+            quality_component = quality_score * 0.10
+            
+            # Tính tổng điểm
             overall_score = ats_component + skills_component + position_component + quality_component
             
-            # Đảm bảo điểm trong khoảng 0-100
-            overall_score = max(0, min(100, overall_score))
+            # Đảm bảo điểm không vượt quá 100
+            overall_score = min(overall_score, 100)
             
-            print(f"📊 Overall Score Breakdown:")
-            print(f"   - ATS Component: {ats_component:.1f}")
-            print(f"   - Skills Component: {skills_component:.1f}")
-            print(f"   - Position Component: {position_component:.1f}")
-            print(f"   - Quality Component: {quality_component:.1f}")
-            print(f"   - Total: {overall_score:.1f}")
-            
-            return round(overall_score)
+            return int(overall_score)
             
         except Exception as e:
             print(f"❌ Lỗi tính overall score: {e}")
-            return 50  # Fallback score
+            return 50  # Điểm trung bình nếu có lỗi
 
     def _calculate_industry_specific_score(self, job_category: str, job_position: str, matching_result: dict, quality_score: float) -> dict:
         """Tính điểm theo ngành nghề cụ thể"""

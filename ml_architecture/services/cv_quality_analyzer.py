@@ -81,92 +81,106 @@ class CVQualityAnalyzer:
         return result
 
     def _analyze_structure(self, parsed_cv: ParsedCV) -> Tuple[float, Dict]:
-        """BƯỚC 6: Phân tích cấu trúc CV"""
+        """BƯỚC 6: Phân tích cấu trúc CV với logic cải thiện"""
         details = {}
         score = 0.0
         
-        # Kiểm tra các mục bắt buộc
+        # Kiểm tra các mục bắt buộc với điểm cao hơn
         found_sections = 0
         total_sections = len(self.required_sections)
         
-        if parsed_cv.summary:
+        if parsed_cv.summary and len(parsed_cv.summary.strip()) > 10:
             found_sections += 1
             details["has_summary"] = True
+            score += 0.25  # Điểm cho summary
         else:
             details["has_summary"] = False
             
-        if parsed_cv.skills:
+        if parsed_cv.skills and len(parsed_cv.skills) > 0:
             found_sections += 1
             details["has_skills"] = True
+            score += 0.25  # Điểm cho skills
         else:
             details["has_skills"] = False
             
-        if parsed_cv.experience:
+        if parsed_cv.experience and len(parsed_cv.experience.strip()) > 10:
             found_sections += 1
             details["has_experience"] = True
+            score += 0.25  # Điểm cho experience
         else:
             details["has_experience"] = False
             
-        if parsed_cv.education:
+        if parsed_cv.education and len(parsed_cv.education.strip()) > 10:
             found_sections += 1
             details["has_education"] = True
+            score += 0.25  # Điểm cho education
         else:
             details["has_education"] = False
         
-        # Tính điểm cấu trúc
-        structure_ratio = found_sections / total_sections
-        details["structure_completeness"] = structure_ratio
-        
-        # Điểm cho cấu trúc rõ ràng
-        if structure_ratio >= 0.75:
-            details["has_clear_structure"] = True
-            score += 0.4
-        elif structure_ratio >= 0.5:
-            details["has_clear_structure"] = True
-            score += 0.2
+        # Điểm bonus cho CV có đầy đủ sections
+        if found_sections >= 3:
+            score += 0.1  # Bonus cho CV đầy đủ
+            details["has_complete_structure"] = True
         else:
-            details["has_clear_structure"] = False
+            details["has_complete_structure"] = False
         
-        # Điểm cho format chuyên nghiệp
-        details["has_professional_format"] = True  # Giả định format tốt
-        score += 0.3
+        # Đảm bảo điểm không vượt quá 1.0
+        score = min(score, 1.0)
         
-        # Điểm cho sections nhất quán
-        details["has_consistent_sections"] = True  # Giả định nhất quán
-        score += 0.3
+        details["found_sections"] = found_sections
+        details["total_sections"] = total_sections
+        details["structure_score"] = score
         
-        return min(score, 1.0), details
+        return score, details
 
     def _analyze_content(self, parsed_cv: ParsedCV) -> Tuple[float, Dict]:
-        """BƯỚC 6: Phân tích nội dung CV"""
+        """BƯỚC 6: Phân tích nội dung CV với logic cải thiện"""
         details = {}
         score = 0.0
         
-        # Điểm cho kinh nghiệm liên quan
-        if parsed_cv.experience:
+        # Điểm cho kinh nghiệm phù hợp
+        if parsed_cv.experience and len(parsed_cv.experience.strip()) > 20:
             details["has_relevant_experience"] = True
-            score += 0.4
+            score += 0.3  # Điểm cao cho experience
         else:
             details["has_relevant_experience"] = False
         
         # Điểm cho kỹ năng phù hợp
-        if parsed_cv.skills and len(parsed_cv.skills) >= 3:
+        if parsed_cv.skills and len(parsed_cv.skills) > 0:
             details["has_appropriate_skills"] = True
-            score += 0.4
-        elif parsed_cv.skills:
-            details["has_appropriate_skills"] = True
-            score += 0.2
+            score += 0.3  # Điểm cao cho skills
         else:
             details["has_appropriate_skills"] = False
         
         # Điểm cho thông tin học vấn
-        if parsed_cv.education:
+        if parsed_cv.education and len(parsed_cv.education.strip()) > 10:
             details["has_education_info"] = True
-            score += 0.2
+            score += 0.2  # Điểm cho education
         else:
             details["has_education_info"] = False
         
-        return min(score, 1.0), details
+        # Điểm bonus cho CV có nhiều thông tin
+        total_content_length = 0
+        if parsed_cv.summary:
+            total_content_length += len(parsed_cv.summary)
+        if parsed_cv.experience:
+            total_content_length += len(parsed_cv.experience)
+        if parsed_cv.education:
+            total_content_length += len(parsed_cv.education)
+        
+        if total_content_length > 500:  # CV có nội dung phong phú
+            score += 0.2  # Bonus cho nội dung phong phú
+            details["has_rich_content"] = True
+        else:
+            details["has_rich_content"] = False
+        
+        # Đảm bảo điểm không vượt quá 1.0
+        score = min(score, 1.0)
+        
+        details["content_score"] = score
+        details["total_content_length"] = total_content_length
+        
+        return score, details
 
     def _analyze_presentation(self, parsed_cv: ParsedCV) -> Tuple[float, Dict]:
         """BƯỚC 6: Phân tích trình bày CV"""
