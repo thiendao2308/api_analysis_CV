@@ -338,6 +338,22 @@ class CVEvaluationService:
             
             try:
                 parsed_cv = parse_cv_file(temp_file_path, job_category)
+                # Cải thiện lấy job title: nếu None/rỗng, lấy từ LLM extraction nếu có
+                job_title = parsed_cv.get('job_title', '')
+                if not job_title:
+                    # Lấy từ LLM extraction nếu có work experience
+                    from ml_architecture.services.llm_api_extractor_cv import extract_cv_info_from_text
+                    llm_cv_info = extract_cv_info_from_text(cv_text)
+                    import json
+                    try:
+                        llm_cv_json = json.loads(llm_cv_info) if isinstance(llm_cv_info, str) else llm_cv_info
+                        work_exp = llm_cv_json.get('Work experience') or llm_cv_json.get('work_experience')
+                        if isinstance(work_exp, list) and len(work_exp) > 0:
+                            # Ưu tiên vị trí gần nhất (mới nhất)
+                            job_title = work_exp[0].get('position') or ''
+                    except Exception:
+                        pass
+                parsed_cv['job_title'] = job_title
                 print(f"✅ BƯỚC 1: Parse CV thành công - Job Title: {parsed_cv.get('job_title', 'N/A')}")
             finally:
                 # Xóa file tạm

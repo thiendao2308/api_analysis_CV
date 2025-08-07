@@ -153,6 +153,13 @@ async def process_cv_file(cv_file: UploadFile) -> str:
         logger.error(f"Error processing CV file: {e}")
         raise HTTPException(status_code=400, detail=f"Error processing CV file: {str(e)}")
 
+# Add security validation import
+from services.security_validator import SecurityValidator
+
+# Initialize security validator
+security_validator = SecurityValidator()
+
+# Update analyze-cv endpoint with security validation
 @app.post("/analyze-cv")
 async def analyze_cv(
     cv_file: UploadFile = File(...),
@@ -161,9 +168,22 @@ async def analyze_cv(
     jd_text: str = Form(...),
     job_requirements: str = Form(None)
 ):
-    """
-    Phân tích CV từ file và đánh giá mức độ phù hợp với JD/JR
-    """
+    """Analyze CV with enhanced security validation"""
+    
+    # Security validation
+    validation_result = security_validator.validate_api_request(
+        file=cv_file,
+        job_category=job_category,
+        job_position=job_position,
+        jd_text=jd_text
+    )
+    
+    if not validation_result['valid']:
+        raise HTTPException(
+            status_code=400,
+            detail=f"Validation failed: {', '.join(validation_result['errors'])}"
+        )
+    
     try:
         # Check memory usage before processing
         if not check_memory_usage():

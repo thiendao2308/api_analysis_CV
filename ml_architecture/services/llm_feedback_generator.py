@@ -82,8 +82,6 @@ THÔNG TIN CV:
 - Kinh nghiệm: {len(cv_experience)} vị trí
 - Dự án: {len(cv_projects)} dự án
 - Điểm chất lượng CV: {quality_score:.2f}
-- Điểm mạnh: {', '.join(strengths[:5])}
-- Điểm yếu: {', '.join(weaknesses[:5])}
 
 THÔNG TIN JD:
 - Kỹ năng yêu cầu: {', '.join(jd_skills[:15])}
@@ -94,36 +92,20 @@ KẾT QUẢ SO KHỚP:
 - Tỷ lệ khớp: {skills_match_score:.1f}%
 - Điểm tổng thể: {overall_score:.1f}/100
 
-PHÂN TÍCH CHI TIẾT:
-- CV có {len(cv_skills)} kỹ năng, JD yêu cầu {len(jd_skills)} kỹ năng
-- Khớp chính xác: {len(matching_skills)}/{len(jd_skills)} kỹ năng
-- Thiếu {len(missing_skills)} kỹ năng quan trọng
-
-HƯỚNG DẪN THEO NGÀNH NGHỀ:
-{industry_guidance}
-
 YÊU CẦU FEEDBACK:
-1. CHÂN THẬT - Đánh giá dựa trên thực tế missing skills và industry standards
-2. CỤ THỂ - Chỉ ra điểm mạnh/yếu dựa trên industry-specific requirements
-3. HỮU ÍCH - Đưa ra gợi ý thực tế phù hợp với ngành nghề {job_category}
-4. CÂN BẰNG - Vừa động viên vừa chỉ ra điểm cần cải thiện
-5. INDUSTRY-AWARE - Phù hợp với trends và requirements của ngành {job_category}
-
-ĐẶC BIỆT CHÚ Ý:
-- Nếu missing skills nhiều: Đưa ra lộ trình học tập cụ thể cho ngành {job_category}
-- Nếu matching skills ít: Gợi ý cách highlight skills hiện có phù hợp với {job_position}
-- Nếu overall score thấp: Đưa ra priority actions rõ ràng cho ngành {job_category}
-- Industry trends: Cập nhật xu hướng mới nhất trong ngành {job_category}
-
-Hãy trả về JSON format:
-{{
-    "overall_assessment": "Đánh giá tổng quan chân thật dựa trên missing skills và industry standards",
-    "strengths": ["Điểm mạnh cụ thể phù hợp với ngành {job_category} 1", "Điểm mạnh cụ thể 2"],
-    "weaknesses": ["Điểm yếu cụ thể dựa trên missing skills và industry requirements 1", "Điểm yếu cụ thể 2"],
-    "specific_suggestions": ["Gợi ý cụ thể để học missing skills phù hợp với ngành {job_category} 1", "Gợi ý cụ thể 2"],
-    "priority_actions": ["Hành động ưu tiên để cải thiện phù hợp với {job_position} 1", "Hành động ưu tiên 2"],
-    "encouragement": "Lời động viên chân thành dựa trên potential và industry opportunities"
-}}
+1. Viết một đoạn ngắn (1-2 câu) tổng hợp điểm mạnh về kỹ năng của ứng viên (dựa trên các kỹ năng phù hợp nổi bật, không liệt kê hết).
+2. Viết một đoạn ngắn (1-2 câu) tổng hợp điểm cần cải thiện về kỹ năng (dựa trên các kỹ năng thiếu quan trọng, không liệt kê hết).
+3. Gợi ý cải thiện (nếu có).
+4. Đảm bảo feedback ngắn gọn, súc tích, dễ hiểu, không liệt kê toàn bộ danh sách kỹ năng.
+5. Trả về JSON format:
+{
+  "overall_assessment": "...",
+  "strengths": ["Đoạn tổng hợp điểm mạnh về kỹ năng (không liệt kê hết)"],
+  "weaknesses": ["Đoạn tổng hợp điểm cần cải thiện về kỹ năng (không liệt kê hết)"],
+  "specific_suggestions": ["Gợi ý cải thiện nếu có"],
+  "priority_actions": ["Hành động ưu tiên nếu có"],
+  "encouragement": "Lời động viên ngắn gọn"
+}
 """
         return context
     
