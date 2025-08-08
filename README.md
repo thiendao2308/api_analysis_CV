@@ -149,6 +149,14 @@ JD Skills: ["C# .NET Core 6", "video editing applications", "JavaScript"]
       "scores": {"ats_score": 75, "overall_score": 82},
       "feedback": "LLM-generated intelligent feedback",
       "suggestions": ["Smart suggestions from LLM"],
+      "llm_feedback": {
+        "overall_assessment": "CV của bạn có một số điểm mạnh như kỹ năng .net, Asp.net core, Bootstrap 5 và Crud operations. Tuy nhiên, vẫn còn thiếu sót ở một số kỹ năng quan trọng như Api graphql, Design patterns, và Domain-driven design.",
+        "strengths": ["CV của bạn thể hiện được kỹ năng .net, Asp.net core, Bootstrap 5 và Crud operations."],
+        "weaknesses": ["Tuy nhiên, vẫn còn thiếu sót ở kỹ năng như Api graphql, Design patterns, và Domain-driven design."],
+        "specific_suggestions": ["1. Nâng cao kiến thức về Api graphql và Design patterns. 2. Học hỏi về Domain-driven design để cải thiện khả năng làm việc trên các dự án thực tế."],
+        "priority_actions": ["1. Tìm hiểu và áp dụng thêm Api graphql và Design patterns vào các dự án thực tế. 2. Tham gia các khóa học liên quan để nắm vững Domain-driven design trong thời gian ngắn."],
+        "encouragement": "Tiếp tục phát triển kỹ năng và kiến thức của mình để đạt được mục tiêu trong sự nghiệp Frontend Developer."
+      },
       "job_category": "...",
       "job_position": "..."
     }
@@ -197,6 +205,16 @@ JD Skills: ["C# .NET Core 6", "video editing applications", "JavaScript"]
 - Feedback chân thật và cụ thể
 - Gợi ý thực tế để cải thiện
 - Động viên phù hợp với điểm số
+
+**🆕 LLM Feedback Block:**
+
+- `llm_feedback` chứa 6 trường chi tiết:
+  - `overall_assessment`: Đánh giá tổng quan
+  - `strengths`: Điểm mạnh (array)
+  - `weaknesses`: Điểm yếu (array)
+  - `specific_suggestions`: Gợi ý cụ thể (array)
+  - `priority_actions`: Hành động ưu tiên (array)
+  - `encouragement`: Lời động viên
 
 ---
 

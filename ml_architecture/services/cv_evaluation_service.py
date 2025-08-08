@@ -479,6 +479,20 @@ class CVEvaluationService:
                 "job_category": job_category,
                 "job_position": job_position
             }
+            
+            # Thêm LLM feedback chi tiết vào response
+            if llm_feedback:
+                result["llm_feedback"] = llm_feedback
+            else:
+                # Fallback nếu LLM không hoạt động
+                result["llm_feedback"] = {
+                    "overall_assessment": feedback,
+                    "strengths": [f"CV có {len(matching_skills)} kỹ năng phù hợp"],
+                    "weaknesses": [f"Thiếu {len(missing_skills)} kỹ năng quan trọng"],
+                    "specific_suggestions": suggestions,
+                    "priority_actions": ["Cải thiện CV để phù hợp hơn với yêu cầu"],
+                    "encouragement": "Tiếp tục phát triển kỹ năng để đạt được mục tiêu"
+                }
             print(f"🎉 Phân tích hoàn tất - Overall Score: {overall_score}")
             return result
         except Exception as e:
@@ -495,6 +509,14 @@ class CVEvaluationService:
                 "scores": {"ats_score": 0, "overall_score": 0},
                 "feedback": "Có lỗi xảy ra trong quá trình phân tích",
                 "suggestions": ["Vui lòng thử lại với CV khác"],
+                "llm_feedback": {
+                    "overall_assessment": "Có lỗi xảy ra trong quá trình phân tích",
+                    "strengths": ["Không thể phân tích"],
+                    "weaknesses": ["Cần thử lại với CV khác"],
+                    "specific_suggestions": ["Vui lòng thử lại với CV khác"],
+                    "priority_actions": ["Kiểm tra lại CV và thử lại"],
+                    "encouragement": "Vui lòng thử lại sau"
+                },
                 "job_category": job_category,
                 "job_position": job_position
             }
