@@ -16,6 +16,7 @@ try:
     from .intelligent_jd_matcher import IntelligentJDMatcher
     from .llm_personal_info_extractor import LLMPersonalInfoExtractor
     from .personalized_feedback_generator import PersonalizedFeedbackGenerator
+    from .cv_spell_checker import CVSpellChecker
     from ..models.shared_models import ParsedCV
     from ..data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
 except ImportError:
@@ -60,6 +61,9 @@ class CVEvaluationService:
         # Personal info extraction và personalized feedback services
         self.llm_personal_info_extractor = None
         self.personalized_feedback_generator = None
+        
+        # Spell checking service
+        self.spell_checker = None
         
         # Bộ từ khóa section (từ evaluate_cv.py)
         self.section_keywords = [
@@ -450,7 +454,14 @@ class CVEvaluationService:
                 job_position=job_position
             )
             
-            # BƯỚC 10: Tạo feedback cá nhân hóa
+            # BƯỚC 10: Kiểm tra chính tả và ngữ pháp CV
+            if self.spell_checker is None:
+                self.spell_checker = CVSpellChecker()
+            
+            spell_check_result = self.spell_checker.check_cv_spelling(cv_text)
+            print(f"✅ BƯỚC 10: Kiểm tra chính tả hoàn tất - {spell_check_result.total_errors} lỗi")
+            
+            # BƯỚC 11: Tạo feedback cá nhân hóa
             if self.personalized_feedback_generator is None:
                 self.personalized_feedback_generator = PersonalizedFeedbackGenerator()
             
@@ -466,7 +477,7 @@ class CVEvaluationService:
                 job_position=job_position or "N/A",
                 job_category=job_category
             )
-            print(f"✅ BƯỚC 10: Tạo feedback cá nhân hóa hoàn tất")
+            print(f"✅ BƯỚC 11: Tạo feedback cá nhân hóa hoàn tất")
             
             # Fallback to traditional feedback if LLM fails
             if not llm_feedback:
@@ -516,7 +527,28 @@ class CVEvaluationService:
                     "full_name": personal_info.full_name,
                     "job_position": personal_info.job_position
                 },
-                "personalized_feedback": personalized_feedback
+                "personalized_feedback": personalized_feedback,
+                
+                # Spell checking results
+                "spell_check": {
+                    "total_errors": spell_check_result.total_errors,
+                    "spelling_errors": spell_check_result.spelling_errors,
+                    "formatting_errors": spell_check_result.formatting_errors,
+                    "overall_score": spell_check_result.overall_score,
+                    "suggestions": spell_check_result.suggestions,
+                    "summary": spell_check_result.summary,
+                    "errors": [
+                        {
+                            "word": error.word,
+                            "line_number": error.line_number,
+                            "error_type": error.error_type,
+                            "suggestion": error.suggestion,
+                            "context": error.context,
+                            "severity": error.severity
+                        }
+                        for error in spell_check_result.errors
+                    ]
+                }
             }
             
             # Thêm LLM feedback chi tiết vào response
