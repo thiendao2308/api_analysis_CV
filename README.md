@@ -17,6 +17,13 @@
 - **Balanced Assessment**: Vừa động viên vừa chỉ ra điểm cần cải thiện
 - **Fallback System**: Hoạt động ngay cả khi LLM không khả dụng
 
+### **🆕 LLM-Powered Personal Info Extraction & Personalized Feedback**
+
+- **LLM-Powered Personal Info Extraction**: Trích xuất tên và vị trí ứng tuyển từ CV sử dụng OpenAI GPT-3.5-turbo
+- **Personalized Assessment**: Tạo câu đánh giá cá nhân hóa với tên ứng viên
+- **Smart Templates**: Sử dụng templates thông minh để tạo feedback tự nhiên
+- **Multi-language Support**: Hỗ trợ cả tiếng Việt và tiếng Anh
+
 ### **⚡ Memory Optimization & Deployment**
 
 - **Render Deployment**: Deploy thành công trên Render free tier
@@ -30,12 +37,14 @@
 
 1. **Nhận request từ client**: Người dùng gửi file CV (PDF/DOCX/TXT) và nội dung JD lên API `/analyze-cv`
 2. **Xử lý file CV**: Backend trích xuất nội dung text từ file CV
-3. **Trích xuất thông tin từ CV**: Sử dụng OpenAI API để phân tích, trích xuất kinh nghiệm, học vấn, kỹ năng, dự án từ CV
-4. **Trích xuất kỹ năng từ JD**: Sử dụng OpenAI API để trích xuất danh sách kỹ năng từ JD
-5. **🆕 Intelligent JD Matching**: So sánh kỹ năng thông minh sử dụng LLM để hiểu semantic similarity
-6. **Đánh giá chất lượng CV**: Phân tích cấu trúc, nội dung, trình bày của CV
-7. **🆕 LLM Feedback Generation**: Tạo feedback thông minh và gợi ý cải thiện
-8. **Tổng hợp kết quả**: Trả về điểm số ATS, điểm tổng thể, kỹ năng phù hợp, kỹ năng thiếu, gợi ý cải thiện
+3. **🆕 LLM-Powered Personal Info Extraction**: Trích xuất thông tin cá nhân (tên, vị trí ứng tuyển) sử dụng OpenAI GPT-3.5-turbo
+4. **Trích xuất thông tin từ CV**: Sử dụng OpenAI API để phân tích, trích xuất kinh nghiệm, học vấn, kỹ năng, dự án từ CV
+5. **Trích xuất kỹ năng từ JD**: Sử dụng OpenAI API để trích xuất danh sách kỹ năng từ JD
+6. **🆕 Intelligent JD Matching**: So sánh kỹ năng thông minh sử dụng LLM để hiểu semantic similarity
+7. **Đánh giá chất lượng CV**: Phân tích cấu trúc, nội dung, trình bày của CV
+8. **🆕 LLM Feedback Generation**: Tạo feedback thông minh và gợi ý cải thiện
+9. **🆕 Personalized Feedback Generation**: Tạo câu đánh giá cá nhân hóa với tên ứng viên
+10. **Tổng hợp kết quả**: Trả về điểm số ATS, điểm tổng thể, kỹ năng phù hợp, kỹ năng thiếu, gợi ý cải thiện, thông tin cá nhân và feedback cá nhân hóa
 
 ---
 
@@ -133,6 +142,8 @@ JD Skills: ["C# .NET Core 6", "video editing applications", "JavaScript"]
   - Nhận file CV, job_category, job_position, jd_text
   - **🆕 Intelligent JD Matching** với semantic understanding
   - **🆕 LLM-powered feedback** thông minh và chân thật
+  - **🆕 Personal Info Extraction** trích xuất thông tin cá nhân
+  - **🆕 Personalized Feedback** câu đánh giá cá nhân hóa
   - Trả về kết quả chi tiết:
     ```json
     {
@@ -149,6 +160,20 @@ JD Skills: ["C# .NET Core 6", "video editing applications", "JavaScript"]
       "scores": {"ats_score": 75, "overall_score": 82},
       "feedback": "LLM-generated intelligent feedback",
       "suggestions": ["Smart suggestions from LLM"],
+      "personal_info": {
+        "full_name": "Nguyễn Văn A",
+        "email": "nva@email.com",
+        "phone": "0123456789",
+        "current_position": "Backend Developer",
+        "current_company": "Company ABC",
+        "location": "Ho Chi Minh City",
+        "linkedin": "linkedin.com/in/nva",
+        "github": "github.com/nva"
+      },
+      "personalized_feedback": {
+        "personalized_assessment": "Xin chào Nguyễn Văn A, bạn đang muốn ứng tuyển vào vị trí Backend Developer. Tôi đánh giá CV của bạn khá phù hợp với công việc vì bạn có nhiều kỹ năng phù hợp, chỉ cần bổ sung một số điểm. Tôi tin rằng với sự cố gắng, bạn sẽ đạt được mục tiêu của mình!",
+        "summary": "CV tốt (Điểm: 82/100) - Khá phù hợp, cần bổ sung nhẹ"
+      },
       "llm_feedback": {
         "overall_assessment": "CV của bạn có một số điểm mạnh như kỹ năng .net, Asp.net core, Bootstrap 5 và Crud operations. Tuy nhiên, vẫn còn thiếu sót ở một số kỹ năng quan trọng như Api graphql, Design patterns, và Domain-driven design.",
         "strengths": ["CV của bạn thể hiện được kỹ năng .net, Asp.net core, Bootstrap 5 và Crud operations."],
@@ -161,6 +186,11 @@ JD Skills: ["C# .NET Core 6", "video editing applications", "JavaScript"]
       "job_position": "..."
     }
     ```
+
+- **🆕 /extract-personal-info** (POST):
+
+  - Nhận file CV, trích xuất thông tin cá nhân
+  - Trả về: tên, email, phone, vị trí hiện tại, công ty, location, social links
 
 - **/analyze-jd** (POST):
 

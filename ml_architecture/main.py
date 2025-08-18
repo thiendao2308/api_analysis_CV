@@ -217,6 +217,17 @@ async def analyze_cv(
             )
             logger.info("Phân tích chi tiết hoàn tất.")
             
+            # Log thông tin cá nhân và feedback cá nhân hóa
+            if 'personal_info' in analysis_result:
+                personal_info = analysis_result['personal_info']
+                logger.info(f"👤 Ứng viên: {personal_info.get('full_name', 'N/A')}")
+                logger.info(f"💼 Vị trí ứng tuyển: {personal_info.get('job_position', 'N/A')}")
+            
+            if 'personalized_feedback' in analysis_result:
+                personalized = analysis_result['personalized_feedback']
+                logger.info(f"💬 Feedback cá nhân hóa: {personalized.get('personalized_assessment', 'N/A')}")
+                logger.info(f"🎯 Assessment Level: {personalized.get('assessment_level', 'N/A')}")
+            
             # Clean up memory
             MemoryManager.force_garbage_collection()
             
@@ -297,6 +308,67 @@ async def extract_jd_skills_api(jd_text: str = Form(...)):
         logger.error(f"LLM API extraction failed: {e}")
         raise HTTPException(status_code=500, detail="LLM API extraction failed")
 
+@app.post("/extract-personal-info")
+async def extract_personal_info(cv_file: UploadFile = File(...)):
+    """Trích xuất thông tin cá nhân từ CV"""
+    try:
+        # Check memory usage before processing
+        if not check_memory_usage():
+            raise HTTPException(
+                status_code=503,
+                detail="Server is under high memory load. Please try again later."
+            )
+        
+        # Xử lý file CV để lấy nội dung text
+        try:
+            logger.info(f"Bắt đầu xử lý file: {cv_file.filename}")
+            cv_content = await process_cv_file(cv_file)
+            logger.info("Xử lý file CV thành công, thu được nội dung text.")
+        except Exception as e:
+            logger.error(f"Lỗi khi xử lý file CV: {str(e)}")
+            raise HTTPException(
+                status_code=400,
+                detail=f"Lỗi không thể xử lý file CV: {str(e)}"
+            )
+
+        if not cv_content:
+            raise HTTPException(
+                status_code=400,
+                detail="Nội dung CV không được để trống"
+            )
+
+        # Trích xuất thông tin cá nhân
+        try:
+            from ml_architecture.services.llm_personal_info_extractor import LLMPersonalInfoExtractor
+            extractor = LLMPersonalInfoExtractor()
+            personal_info = extractor.extract_personal_info(cv_content)
+            
+            logger.info(f"✅ Trích xuất thông tin cá nhân thành công: {personal_info.full_name}")
+            
+            return {
+                "personal_info": {
+                    "full_name": personal_info.full_name,
+                    "job_position": personal_info.job_position
+                },
+                "cv_content_preview": cv_content[:500] + "..." if len(cv_content) > 500 else cv_content
+            }
+            
+        except Exception as e:
+            logger.error(f"Lỗi khi trích xuất thông tin cá nhân: {str(e)}")
+            raise HTTPException(
+                status_code=500,
+                detail=f"Lỗi khi trích xuất thông tin cá nhân: {str(e)}"
+            )
+
+    except HTTPException:
+        raise
+    except Exception as e:
+        logger.error(f"Lỗi không xác định: {str(e)}")
+        raise HTTPException(
+            status_code=500,
+            detail=f"Lỗi server: {str(e)}"
+        )
+
 @app.get("/health")
 async def health_check():
     """Health check endpoint - simplified for faster response"""
@@ -322,6 +394,7 @@ async def root():
         "endpoints": {
             "analyze_cv": "/analyze-cv",
             "analyze_jd": "/analyze-jd",
+            "extract_personal_info": "/extract-personal-info",
             "health": "/health"
         }
     }

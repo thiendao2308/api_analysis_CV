@@ -14,6 +14,8 @@ try:
     from .cv_quality_analyzer import CVQualityAnalyzer
     from .suggestion_generator import SuggestionGenerator
     from .intelligent_jd_matcher import IntelligentJDMatcher
+    from .llm_personal_info_extractor import LLMPersonalInfoExtractor
+    from .personalized_feedback_generator import PersonalizedFeedbackGenerator
     from ..models.shared_models import ParsedCV
     from ..data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
 except ImportError:
@@ -25,6 +27,8 @@ except ImportError:
     from services.cv_quality_analyzer import CVQualityAnalyzer
     from services.suggestion_generator import SuggestionGenerator
     from services.intelligent_jd_matcher import IntelligentJDMatcher
+    
+    from services.personalized_feedback_generator import PersonalizedFeedbackGenerator
     from models.shared_models import ParsedCV
     from data.evaluate_cv import evaluate_cv, extract_sections_from_text, extract_entities_from_sections
 
@@ -52,6 +56,10 @@ class CVEvaluationService:
         
         # Intelligent JD matching service
         self.intelligent_jd_matcher = None
+        
+        # Personal info extraction và personalized feedback services
+        self.llm_personal_info_extractor = None
+        self.personalized_feedback_generator = None
         
         # Bộ từ khóa section (từ evaluate_cv.py)
         self.section_keywords = [
@@ -414,7 +422,14 @@ class CVEvaluationService:
                 cv_skills, jd_skills, job_category, position_match_score, matching_result
             )
             print(f"✅ BƯỚC 7: ATS Score: {ats_score}, Overall Score: {overall_score}")
-            # BƯỚC 8: Tạo feedback thông minh bằng LLM
+            # BƯỚC 8: Trích xuất thông tin cá nhân từ CV sử dụng LLM
+            if self.llm_personal_info_extractor is None:
+                self.llm_personal_info_extractor = LLMPersonalInfoExtractor()
+            
+            personal_info = self.llm_personal_info_extractor.extract_personal_info(cv_text)
+            print(f"✅ BƯỚC 8: Trích xuất thông tin cá nhân bằng LLM - {personal_info.full_name}")
+            
+            # BƯỚC 9: Tạo feedback thông minh bằng LLM
             llm_feedback = self._generate_intelligent_llm_feedback(
                 cv_analysis={
                     "skills": cv_skills,
@@ -434,6 +449,24 @@ class CVEvaluationService:
                 job_category=job_category,
                 job_position=job_position
             )
+            
+            # BƯỚC 10: Tạo feedback cá nhân hóa
+            if self.personalized_feedback_generator is None:
+                self.personalized_feedback_generator = PersonalizedFeedbackGenerator()
+            
+            personalized_feedback = self.personalized_feedback_generator.generate_personalized_feedback(
+                personal_info=personal_info,
+                analysis_result={
+                    "overall_score": overall_score,
+                    "cv_skills": cv_skills,
+                    "jd_skills": jd_skills,
+                    "matching_skills": matching_skills,
+                    "missing_skills": missing_skills
+                },
+                job_position=job_position or "N/A",
+                job_category=job_category
+            )
+            print(f"✅ BƯỚC 10: Tạo feedback cá nhân hóa hoàn tất")
             
             # Fallback to traditional feedback if LLM fails
             if not llm_feedback:
@@ -477,7 +510,13 @@ class CVEvaluationService:
                 "feedback": feedback,
                 "suggestions": suggestions,
                 "job_category": job_category,
-                "job_position": job_position
+                "job_position": job_position,
+                # Thêm thông tin cá nhân và feedback cá nhân hóa
+                "personal_info": {
+                    "full_name": personal_info.full_name,
+                    "job_position": personal_info.job_position
+                },
+                "personalized_feedback": personalized_feedback
             }
             
             # Thêm LLM feedback chi tiết vào response
@@ -1079,9 +1118,9 @@ class CVEvaluationService:
         
         if score >= 80:
             return [
-                "Chuẩn bị cho interview",
+                "Chuẩn bị cho ứng tuyển",
                 "Research về company culture",
-                "Practice common interview questions",
+                "Practice common questions",
                 "Update portfolio với latest projects"
             ]
         elif score >= 60:
