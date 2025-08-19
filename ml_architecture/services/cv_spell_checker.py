@@ -111,11 +111,12 @@ class CVSpellChecker:
         lines = cv_text.split('\n')
         cv_preview = '\n'.join(lines[:30])
 
-        prompt = f"""
+        # Ghi đè bằng template an toàn, tránh f-string với dấu ngoặc nhọn
+        prompt_template = """
 Hãy chỉ kiểm tra 2 hạng mục sau trong CV dưới đây và KHÔNG kiểm tra tiêu chí nào khác:
 
 CV TEXT:
-{cv_preview}
+<<CV_PREVIEW>>
 
 I. CHÍNH TẢ (spelling):
 - Nếu CV là tiếng Anh: chỉ kiểm tra từ tiếng Anh có viết đúng chính tả từ điển hay không.
@@ -139,22 +140,22 @@ LƯU Ý QUAN TRỌNG:
 
 Hãy trả về kết quả theo format JSON:
 {
-	"total_errors": số_lỗi_tổng,
-	"spelling_errors": số_lỗi_chính_tả,
-	"formatting_errors": số_lỗi_khoảng_trắng_sau_dấu,
-	"errors": [
-		{
-			"word": "từ_hoặc_cụm_ký_tự_gây_lỗi",
-			"line_number": số_dòng,
-			"error_type": "spelling" | "formatting",
-			"suggestion": "gợi_ý_sửa_ngắn_gọn",
-			"context": "ngữ_cảnh_bằng_tiếng_việt",
-			"severity": "low" | "medium" | "high"
-		}
-	],
-	"overall_score": điểm_tổng_quan_0_100,
-	"suggestions": ["gợi_ý_1", "gợi_ý_2"],
-	"summary": "tóm_tắt_kết_quả_bằng_tiếng_việt"
+    "total_errors": số_lỗi_tổng,
+    "spelling_errors": số_lỗi_chính_tả,
+    "formatting_errors": số_lỗi_khoảng_trắng_sau_dấu,
+    "errors": [
+        {
+            "word": "từ_hoặc_cụm_ký_tự_gây_lỗi",
+            "line_number": số_dòng,
+            "error_type": "spelling" | "formatting",
+            "suggestion": "gợi_ý_sửa_ngắn_gọn",
+            "context": "ngữ_cảnh_bằng_tiếng_việt",
+            "severity": "low" | "medium" | "high"
+        }
+    ],
+    "overall_score": điểm_tổng_quan_0_100,
+    "suggestions": ["gợi_ý_1", "gợi_ý_2"],
+    "summary": "tóm_tắt_kết_quả_bằng_tiếng_việt"
 }
 
 Ví dụ context tiếng Việt:
@@ -169,6 +170,7 @@ Tiêu chí đánh giá điểm:
 - 50-69: Trung bình, có nhiều lỗi
 - 0-49: Kém, có nhiều lỗi nghiêm trọng
 """
+        prompt = prompt_template.replace("<<CV_PREVIEW>>", cv_preview)
         return prompt
 
     def _parse_llm_spell_check_response(self, llm_response: str, cv_text: str) -> SpellCheckResult:
