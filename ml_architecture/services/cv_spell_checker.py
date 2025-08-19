@@ -29,7 +29,7 @@ class SpellCheckResult:
     summary: str
 
 class CVSpellChecker:
-    """Kiểm tra chính tả và định dạng cho CV sử dụng LLM"""
+    """Kiểm tra chính tả cho CV sử dụng LLM"""
 
     def __init__(self):
         self.client = None
@@ -61,7 +61,7 @@ class CVSpellChecker:
             logger.error(f"❌ Error initializing OpenAI client for spell checking: {e}")
 
     def check_cv_spelling(self, cv_text: str) -> SpellCheckResult:
-        """Kiểm tra chính tả và định dạng cho CV"""
+        """Kiểm tra chính tả cho CV"""
         try:
             if not self.client:
                 logger.warning("⚠️ OpenAI client not available, using fallback spell checking")
@@ -76,7 +76,7 @@ class CVSpellChecker:
                 messages=[
                     {
                         "role": "system",
-                        "content": "Bạn là chuyên gia kiểm tra chính tả và khoảng trắng sau dấu (',', '.', ';', ':') cho CV. Chỉ kiểm tra 2 hạng mục: chính tả (tiếng Việt/tiếng Anh) và khoảng trắng sau dấu. KHÔNG kiểm tra ngữ pháp, dấu câu khác, viết hoa, căn lề. Trả về JSON như hướng dẫn."
+                        "content": "Bạn là chuyên gia kiểm tra chính tả cho CV (tiếng Việt và tiếng Anh). Chỉ kiểm tra CHÍNH TẢ từ ngữ. KHÔNG kiểm tra ngữ pháp, dấu câu, viết hoa, căn lề hay định dạng. Trả về JSON như hướng dẫn."
                     },
                     {
                         "role": "user",
@@ -113,25 +113,16 @@ class CVSpellChecker:
 
         # Ghi đè bằng template an toàn, tránh f-string với dấu ngoặc nhọn
         prompt_template = """
-Hãy chỉ kiểm tra 2 hạng mục sau trong CV dưới đây và KHÔNG kiểm tra tiêu chí nào khác:
+Chỉ kiểm tra CHÍNH TẢ từ ngữ trong CV dưới đây. KHÔNG kiểm tra định dạng, khoảng trắng, ngữ pháp, dấu câu hay viết hoa.
 
 CV TEXT:
 <<CV_PREVIEW>>
 
-I. CHÍNH TẢ (spelling):
+Quy tắc:
 - Nếu CV là tiếng Anh: chỉ kiểm tra từ tiếng Anh có viết đúng chính tả từ điển hay không.
 - Nếu CV là tiếng Việt: chỉ kiểm tra lỗi chính tả tiếng Việt. Giữ nguyên dấu tiếng Việt, tuyệt đối KHÔNG gợi ý bỏ dấu.
 - Ví dụ: "Flulter" -> "Flutter"; "tooi" -> "toi" (nếu văn bản không dấu) hoặc "tooi" -> "tôi" (nếu văn bản có dấu).
 - KHÔNG báo lỗi cho: tên riêng, tên công ty, job title hợp lệ ("Backend Developer", "Frontend Developer"), acronym/viết tắt đúng ("AI/LLM", "API", "ASP.NET").
-
-II. ĐỊNH DẠNG (formatting - CHỈ khoảng trắng sau dấu):
-- Chỉ kiểm tra khoảng trắng SAU các dấu: "," "." ";" ":".
-- Quy tắc: nếu sau các dấu trên còn ký tự chữ tiếp theo thì PHẢI có đúng 1 dấu cách.
-- Ngoại lệ không báo lỗi:
-  + Dấu ở cuối dòng.
-  + Số thập phân: ví dụ "3.14".
-  + Phân tách hàng nghìn: ví dụ "1,000".
-- KHÔNG kiểm tra/cảnh báo các định dạng khác (viết hoa, căn lề, chấm câu khác, bullet, tab, v.v.).
 
 LƯU Ý QUAN TRỌNG:
 - KHÔNG báo lỗi hoặc đề xuất thay đổi với tên riêng tiếng Việt có dấu (ví dụ: "Đào" là đúng, không gợi ý "Dao").
@@ -142,12 +133,12 @@ Hãy trả về kết quả theo format JSON:
 {
     "total_errors": số_lỗi_tổng,
     "spelling_errors": số_lỗi_chính_tả,
-    "formatting_errors": số_lỗi_khoảng_trắng_sau_dấu,
+    "formatting_errors": 0,
     "errors": [
         {
-            "word": "từ_hoặc_cụm_ký_tự_gây_lỗi",
+            "word": "từ_gây_lỗi",
             "line_number": số_dòng,
-            "error_type": "spelling" | "formatting",
+            "error_type": "spelling",
             "suggestion": "gợi_ý_sửa_ngắn_gọn",
             "context": "ngữ_cảnh_bằng_tiếng_việt",
             "severity": "low" | "medium" | "high"
@@ -160,9 +151,7 @@ Hãy trả về kết quả theo format JSON:
 
 Ví dụ context tiếng Việt:
 - "Từ này xuất hiện trong phần mô tả kỹ năng"
-- "Tên vị trí công việc cần viết hoa đúng cách"
-- "Thiếu khoảng trắng sau dấu ',' trong câu"
-- "Có nhiều hơn 1 khoảng trắng sau dấu ':'"
+- "Tên vị trí công việc"
 
 Tiêu chí đánh giá điểm:
 - 90-100: Hoàn hảo hoặc chỉ có 1-2 lỗi nhỏ
@@ -201,7 +190,7 @@ Tiêu chí đánh giá điểm:
                 return SpellCheckResult(
                     total_errors=data.get('total_errors', 0),
                     spelling_errors=data.get('spelling_errors', 0),
-                    formatting_errors=data.get('formatting_errors', 0),
+                    formatting_errors=0,
                     errors=errors,
                     overall_score=data.get('overall_score', 100),
                     suggestions=data.get('suggestions', []),
@@ -240,15 +229,15 @@ Tiêu chí đánh giá điểm:
                         except:
                             score = 100
 
-            # Tạo kết quả fallback với context tiếng Việt
+            # Tạo kết quả fallback với context tiếng Việt (chỉ chính tả)
             return SpellCheckResult(
                 total_errors=total_errors,
-                spelling_errors=total_errors // 2,
-                formatting_errors=total_errors // 2,
+                spelling_errors=total_errors,
+                formatting_errors=0,
                 errors=errors,
                 overall_score=score if 'score' in locals() else 100,
-                suggestions=["Kiểm tra lại chính tả và định dạng"],
-                summary=f"Tìm thấy {total_errors} lỗi chính tả và định dạng trong CV"
+                suggestions=["Kiểm tra lại chính tả"],
+                summary=f"Tìm thấy {total_errors} lỗi chính tả trong CV"
             )
 
         except Exception as e:
@@ -348,8 +337,8 @@ Tiêu chí đánh giá điểm:
                                     errors.append(error)
                                     spelling_count += 1
 
-            # Tính điểm dựa trên số lỗi
-            total_errors = spelling_count + formatting_count
+            # Tính điểm dựa trên số lỗi (chỉ chính tả)
+            total_errors = spelling_count
             if total_errors == 0:
                 overall_score = 100
             elif total_errors <= 2:
@@ -364,11 +353,11 @@ Tiêu chí đánh giá điểm:
             return SpellCheckResult(
                 total_errors=total_errors,
                 spelling_errors=spelling_count,
-                formatting_errors=formatting_count,
+                formatting_errors=0,
                 errors=errors,
                 overall_score=overall_score,
                 suggestions=["Sử dụng LLM để kiểm tra chính tả chính xác hơn"],
-                summary=f"Fallback check: Tìm thấy {total_errors} lỗi chính tả/định dạng (spelling={spelling_count}, formatting={formatting_count})"
+                summary=f"Fallback check: Tìm thấy {total_errors} lỗi chính tả (spelling={spelling_count})"
             )
 
         except Exception as e:
