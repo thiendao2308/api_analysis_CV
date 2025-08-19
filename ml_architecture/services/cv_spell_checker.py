@@ -76,7 +76,7 @@ class CVSpellChecker:
                 messages=[
                     {
                         "role": "system",
-                        "content": "Bạn là một chuyên gia kiểm tra chính tả và định dạng tiếng Việt và tiếng Anh. Hãy kiểm tra CV và tìm ra các lỗi chính tả và định dạng. Trả về kết quả theo format JSON."
+                        "content": "Bạn là chuyên gia kiểm tra chính tả và khoảng trắng sau dấu (',', '.', ';', ':') cho CV. Chỉ kiểm tra 2 hạng mục: chính tả (tiếng Việt/tiếng Anh) và khoảng trắng sau dấu. KHÔNG kiểm tra ngữ pháp, dấu câu khác, viết hoa, căn lề. Trả về JSON như hướng dẫn."
                     },
                     {
                         "role": "user",
@@ -112,53 +112,62 @@ class CVSpellChecker:
         cv_preview = '\n'.join(lines[:30])
 
         prompt = f"""
-Hãy kiểm tra chính tả từ ngữ và định dạng của CV sau đây:
+Hãy chỉ kiểm tra 2 hạng mục sau trong CV dưới đây và KHÔNG kiểm tra tiêu chí nào khác:
 
 CV TEXT:
 {cv_preview}
 
-Yêu cầu kiểm tra:
-1. Lỗi chính tả tiếng Việt và tiếng Anh (spelling) - chỉ những từ thực sự sai chính tả
-2. Lỗi định dạng (formatting) - khoảng trắng thừa, căn lề sai, viết hoa không nhất quán
+I. CHÍNH TẢ (spelling):
+- Nếu CV là tiếng Anh: chỉ kiểm tra từ tiếng Anh có viết đúng chính tả từ điển hay không.
+- Nếu CV là tiếng Việt: chỉ kiểm tra lỗi chính tả tiếng Việt. Giữ nguyên dấu tiếng Việt, tuyệt đối KHÔNG gợi ý bỏ dấu.
+- Ví dụ: "Flulter" -> "Flutter"; "tooi" -> "toi" (nếu văn bản không dấu) hoặc "tooi" -> "tôi" (nếu văn bản có dấu).
+- KHÔNG báo lỗi cho: tên riêng, tên công ty, job title hợp lệ ("Backend Developer", "Frontend Developer"), acronym/viết tắt đúng ("AI/LLM", "API", "ASP.NET").
+
+II. ĐỊNH DẠNG (formatting - CHỈ khoảng trắng sau dấu):
+- Chỉ kiểm tra khoảng trắng SAU các dấu: "," "." ";" ":".
+- Quy tắc: nếu sau các dấu trên còn ký tự chữ tiếp theo thì PHẢI có đúng 1 dấu cách.
+- Ngoại lệ không báo lỗi:
+  + Dấu ở cuối dòng.
+  + Số thập phân: ví dụ "3.14".
+  + Phân tách hàng nghìn: ví dụ "1,000".
+- KHÔNG kiểm tra/cảnh báo các định dạng khác (viết hoa, căn lề, chấm câu khác, bullet, tab, v.v.).
 
 LƯU Ý QUAN TRỌNG:
-- KHÔNG báo lỗi cho tên riêng, tên công ty, tên công nghệ đúng
-- KHÔNG báo lỗi cho "Backend Developer", "Frontend Developer" - đây là tên vị trí đúng
-- KHÔNG báo lỗi cho "AI/LLM", "ASP.NET" - đây là tên công nghệ đúng
-- Chỉ báo lỗi cho những từ thực sự sai chính tả hoặc định dạng rõ ràng sai
-- TRƯỜNG "context" PHẢI VIẾT BẰNG TIẾNG VIỆT
+- KHÔNG báo lỗi hoặc đề xuất thay đổi với tên riêng tiếng Việt có dấu (ví dụ: "Đào" là đúng, không gợi ý "Dao").
+- KHÔNG gợi ý thay đổi với job title hoặc thuật ngữ công nghệ đúng.
+- TRƯỜNG "context" và "summary" PHẢI VIẾT BẰNG TIẾNG VIỆT, ngắn gọn, dễ hiểu.
 
 Hãy trả về kết quả theo format JSON:
-{{
-    "total_errors": số_lỗi_tổng,
-    "spelling_errors": số_lỗi_chính_tả_thực_sự,
-    "formatting_errors": số_lỗi_định_dạng_thực_sự,
-    "errors": [
-        {{
-            "word": "từ_sai_thực_sự",
-            "line_number": số_dòng,
-            "error_type": "spelling_hoặc_formatting",
-            "suggestion": "gợi_ý_sửa",
-            "context": "ngữ_cảnh_bằng_tiếng_việt",
-            "severity": "mức_độ_nghiêm_trọng"
-        }}
-    ],
-    "overall_score": điểm_tổng_quan_0_100,
-    "suggestions": ["gợi_ý_1", "gợi_ý_2"],
-    "summary": "tóm_tắt_kết_quả_bằng_tiếng_việt"
-}}
+{
+	"total_errors": số_lỗi_tổng,
+	"spelling_errors": số_lỗi_chính_tả,
+	"formatting_errors": số_lỗi_khoảng_trắng_sau_dấu,
+	"errors": [
+		{
+			"word": "từ_hoặc_cụm_ký_tự_gây_lỗi",
+			"line_number": số_dòng,
+			"error_type": "spelling" | "formatting",
+			"suggestion": "gợi_ý_sửa_ngắn_gọn",
+			"context": "ngữ_cảnh_bằng_tiếng_việt",
+			"severity": "low" | "medium" | "high"
+		}
+	],
+	"overall_score": điểm_tổng_quan_0_100,
+	"suggestions": ["gợi_ý_1", "gợi_ý_2"],
+	"summary": "tóm_tắt_kết_quả_bằng_tiếng_việt"
+}
 
 Ví dụ context tiếng Việt:
 - "Từ này xuất hiện trong phần mô tả kỹ năng"
 - "Tên vị trí công việc cần viết hoa đúng cách"
-- "Tên công nghệ cần viết đúng chính tả"
-- "Phần mô tả dự án có lỗi định dạng"
+- "Thiếu khoảng trắng sau dấu ',' trong câu"
+- "Có nhiều hơn 1 khoảng trắng sau dấu ':'"
 
-Tiêu chí đánh giá:
-- Điểm 90-100: Hoàn hảo hoặc chỉ có 1-2 lỗi nhỏ
-- Điểm 70-89: Khá tốt, có một số lỗi nhỏ
-- Điểm 50-69: Trung bình, có nhiều lỗi
-- Điểm 0-49: Kém, có nhiều lỗi nghiêm trọng
+Tiêu chí đánh giá điểm:
+- 90-100: Hoàn hảo hoặc chỉ có 1-2 lỗi nhỏ
+- 70-89: Khá tốt, có một số lỗi nhỏ
+- 50-69: Trung bình, có nhiều lỗi
+- 0-49: Kém, có nhiều lỗi nghiêm trọng
 """
         return prompt
 
@@ -257,7 +266,8 @@ Tiêu chí đánh giá:
         try:
             lines = cv_text.split('\n')
             errors = []
-            total_errors = 0
+            spelling_count = 0
+            formatting_count = 0
 
             # Danh sách từ đúng không được báo lỗi
             correct_terms = {
@@ -274,6 +284,42 @@ Tiêu chí đánh giá:
                 line_lower = line.lower()
                 words = line.split()
 
+                # 1) Kiểm tra định dạng: khoảng trắng sau dấu , . ; :
+                # Thiếu khoảng trắng (nhưng có ký tự chữ theo sau)
+                for match in re.finditer(r'([,.;:])(?=[A-Za-zÀ-ỹ0-9])', line):
+                    punct = match.group(1)
+                    col = match.start() + 1
+                    # Bỏ qua các ngoại lệ: số thập phân và phân tách nghìn
+                    before = line[max(0, match.start()-2):match.start()+2]
+                    if punct == '.' and re.search(r'\d\.\d', before):
+                        pass
+                    elif punct == ',' and re.search(r'\d,\d{3}', before):
+                        pass
+                    else:
+                        errors.append(SpellError(
+                            word=punct,
+                            line_number=i + 1,
+                            error_type="formatting",
+                            suggestion=f"Thêm 1 khoảng trắng sau '{punct}'",
+                            context=f"Thiếu khoảng trắng sau dấu '{punct}' (dòng {i+1})",
+                            severity="low"
+                        ))
+                        formatting_count += 1
+
+                # Thừa khoảng trắng (>1 khoảng trắng)
+                for match in re.finditer(r'([,.;:])\s{2,}(?=\S)', line):
+                    punct = match.group(1)
+                    errors.append(SpellError(
+                        word=punct,
+                        line_number=i + 1,
+                        error_type="formatting",
+                        suggestion=f"Chỉ để 1 khoảng trắng sau '{punct}'",
+                        context=f"Có hơn 1 khoảng trắng sau dấu '{punct}' (dòng {i+1})",
+                        severity="low"
+                    ))
+                    formatting_count += 1
+
+                # 2) Kiểm tra chính tả đơn giản (fallback)
                 for word in words:
                     # Loại bỏ dấu câu và số
                     clean_word = re.sub(r'[^\w\s]', '', word)
@@ -298,9 +344,10 @@ Tiêu chí đánh giá:
                                         severity="low"
                                     )
                                     errors.append(error)
-                                    total_errors += 1
+                                    spelling_count += 1
 
             # Tính điểm dựa trên số lỗi
+            total_errors = spelling_count + formatting_count
             if total_errors == 0:
                 overall_score = 100
             elif total_errors <= 2:
@@ -314,12 +361,12 @@ Tiêu chí đánh giá:
 
             return SpellCheckResult(
                 total_errors=total_errors,
-                spelling_errors=total_errors,
-                formatting_errors=0,
+                spelling_errors=spelling_count,
+                formatting_errors=formatting_count,
                 errors=errors,
                 overall_score=overall_score,
                 suggestions=["Sử dụng LLM để kiểm tra chính tả chính xác hơn"],
-                summary=f"Fallback check: Tìm thấy {total_errors} lỗi chính tả"
+                summary=f"Fallback check: Tìm thấy {total_errors} lỗi chính tả/định dạng (spelling={spelling_count}, formatting={formatting_count})"
             )
 
         except Exception as e:
