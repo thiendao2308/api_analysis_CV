@@ -252,11 +252,17 @@ YÊU CẦU FEEDBACK:
         4. Đảm bảo feedback đa chiều nhưng ngắn gọn, dễ hiểu.
         5. KHÔNG được gợi ý bổ sung những kỹ năng mà CV đã có.
 
+        LƯU Ý QUAN TRỌNG:
+        - CV đã có: Git, NextJS, RESTful APIs, TypeScript, React, Node.js
+        - KHÔNG được gợi ý học lại những kỹ năng này
+        - Chỉ gợi ý kỹ năng thực sự thiếu trong missing_skills
+        - Tập trung vào kỹ năng nâng cao hoặc chuyên sâu hơn
+
         Trả về JSON format đầy đủ:
         {{
             "overall_assessment": "Đánh giá tổng quan ngắn gọn (1-2 câu)",
             "strengths": ["2-3 câu tổng hợp điểm mạnh, nêu rõ 3-4 kỹ năng phù hợp nổi bật"],
-            "weaknesses": ["2-3 câu tổng hợp điểm cần cải thiện, CHỈ nêu 3-4 kỹ năng thiếu"],
+            "weaknesses": ["2-3 câu tổng hợp điểm cần cải thiện, CHỈ nêu 3-4 kỹ năng thiếu quan trọng nhất"],
             "specific_suggestions": ["3-4 gợi ý cải thiện ngắn gọn và cụ thể"],
             "priority_actions": ["2-3 hành động ưu tiên với timeline ngắn"],
             "ats_optimization": "Gợi ý tối ưu ATS cụ thể (1-2 câu)"

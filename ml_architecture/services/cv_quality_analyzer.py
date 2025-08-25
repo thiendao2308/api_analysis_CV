@@ -89,7 +89,7 @@ class CVQualityAnalyzer:
         found_sections = 0
         total_sections = len(self.required_sections)
         
-        if parsed_cv.summary and len(parsed_cv.summary.strip()) > 10:
+        if parsed_cv.summary and len(str(parsed_cv.summary).strip()) > 10:
             found_sections += 1
             details["has_summary"] = True
             score += 0.25  # Điểm cho summary
@@ -103,14 +103,16 @@ class CVQualityAnalyzer:
         else:
             details["has_skills"] = False
             
-        if parsed_cv.experience and len(parsed_cv.experience.strip()) > 10:
+        # Sửa: experience là List[Dict], không phải string
+        if parsed_cv.experience and len(parsed_cv.experience) > 0:
             found_sections += 1
             details["has_experience"] = True
             score += 0.25  # Điểm cho experience
         else:
             details["has_experience"] = False
             
-        if parsed_cv.education and len(parsed_cv.education.strip()) > 10:
+        # Sửa: education là List[Dict], không phải string
+        if parsed_cv.education and len(parsed_cv.education) > 0:
             found_sections += 1
             details["has_education"] = True
             score += 0.25  # Điểm cho education
@@ -138,8 +140,8 @@ class CVQualityAnalyzer:
         details = {}
         score = 0.0
         
-        # Điểm cho kinh nghiệm phù hợp
-        if parsed_cv.experience and len(parsed_cv.experience.strip()) > 20:
+        # Điểm cho kinh nghiệm phù hợp - sửa data type
+        if parsed_cv.experience and len(parsed_cv.experience) > 0:
             details["has_relevant_experience"] = True
             score += 0.3  # Điểm cao cho experience
         else:
@@ -152,8 +154,8 @@ class CVQualityAnalyzer:
         else:
             details["has_appropriate_skills"] = False
         
-        # Điểm cho thông tin học vấn
-        if parsed_cv.education and len(parsed_cv.education.strip()) > 10:
+        # Điểm cho thông tin học vấn - sửa data type
+        if parsed_cv.education and len(parsed_cv.education) > 0:
             details["has_education_info"] = True
             score += 0.2  # Điểm cho education
         else:
@@ -162,11 +164,17 @@ class CVQualityAnalyzer:
         # Điểm bonus cho CV có nhiều thông tin
         total_content_length = 0
         if parsed_cv.summary:
-            total_content_length += len(parsed_cv.summary)
+            total_content_length += len(str(parsed_cv.summary))
         if parsed_cv.experience:
-            total_content_length += len(parsed_cv.experience)
+            # Tính tổng độ dài của tất cả experience entries
+            for exp in parsed_cv.experience:
+                if isinstance(exp, dict):
+                    total_content_length += len(str(exp.get('title', '')) + str(exp.get('company', '')) + str(exp.get('description', '')))
         if parsed_cv.education:
-            total_content_length += len(parsed_cv.education)
+            # Tính tổng độ dài của tất cả education entries
+            for edu in parsed_cv.education:
+                if isinstance(edu, dict):
+                    total_content_length += len(str(edu.get('degree', '')) + str(edu.get('school', '')))
         
         if total_content_length > 500:  # CV có nội dung phong phú
             score += 0.2  # Bonus cho nội dung phong phú
@@ -294,8 +302,8 @@ if __name__ == "__main__":
     sample_cv = ParsedCV(
         summary="Kế toán viên với 3 năm kinh nghiệm",
         skills=["Excel", "Word", "Kế toán"],
-        experience="Công ty ABC - Kế toán viên (2020-2023)",
-        education="Đại học Kinh tế - Chuyên ngành Kế toán"
+        experience=[{"title": "Kế toán viên", "company": "Công ty ABC", "description": "2020-2023"}],
+        education=[{"degree": "Kế toán", "school": "Đại học Kinh tế"}]
     )
     
     result = analyzer.analyze(sample_cv)
