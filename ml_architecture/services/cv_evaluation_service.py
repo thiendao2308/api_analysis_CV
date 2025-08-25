@@ -420,7 +420,7 @@ class CVEvaluationService:
             ml_insights = self._analyze_cv_with_ml_insights(cv_text, job_category)
             print(f"✅ BƯỚC 6: ML insights hoàn tất")
             # BƯỚC 7: Tính điểm ATS và Overall
-            ats_score = self._calculate_ats_score(quality_analysis, parsed_cv_obj)
+            ats_score = self._calculate_ats_score(parsed_cv_obj, quality_analysis)
             overall_score = self._calculate_overall_score(
                 ats_score, quality_analysis, len(cv_skills), len(jd_skills),
                 cv_skills, jd_skills, job_category, position_match_score, matching_result
@@ -690,64 +690,89 @@ class CVEvaluationService:
                 return 80
             return 40
 
-    def _calculate_ats_score(self, quality_analysis: Dict, parsed_cv: ParsedCV) -> int:
-        """BƯỚC 6: Tính điểm ATS dựa trên chất lượng CV"""
+    def _calculate_ats_score(self, parsed_cv: ParsedCV, quality_analysis: Dict) -> int:
+        """Tính điểm ATS dựa trên các tiêu chí chuẩn"""
         ats_score = 0
         
-        # Điểm cho format chuẩn
-        if quality_analysis.get('quality_score', 0) >= 0.75:
-            ats_score += 20
-        
-        # Điểm cho skills
-        if parsed_cv.skills:
-            ats_score += min(len(parsed_cv.skills) * 2, 20)  # Tối đa 20 điểm
-        
-        # Điểm cho experience
-        if parsed_cv.experience:
-            ats_score += 15
-        
-        # Điểm cho education
-        if parsed_cv.education:
-            ats_score += 10
-        
-        # Điểm cho summary
-        if parsed_cv.summary:
-            ats_score += 10
-        
-        return min(ats_score, 100)
+        try:
+            # 1. Điểm cho format chuẩn (20 điểm)
+            quality_score = quality_analysis.get('quality_score', 0)
+            if quality_score >= 0.75:
+                ats_score += 20
+                print(f"✅ ATS Format Score: +20 (Quality: {quality_score:.2f})")
+            else:
+                print(f"⚠️ ATS Format Score: +0 (Quality: {quality_score:.2f} < 0.75)")
+            
+            # 2. Điểm cho skills (20 điểm tối đa)
+            if parsed_cv.skills:
+                skills_score = min(len(parsed_cv.skills) * 2, 20)
+                ats_score += skills_score
+                print(f"✅ ATS Skills Score: +{skills_score} ({len(parsed_cv.skills)} skills)")
+            else:
+                print("⚠️ ATS Skills Score: +0 (no skills)")
+            
+            # 3. Điểm cho experience (15 điểm)
+            if parsed_cv.experience:
+                ats_score += 15
+                print("✅ ATS Experience Score: +15")
+            else:
+                print("⚠️ ATS Experience Score: +0")
+            
+            # 4. Điểm cho education (10 điểm)
+            if parsed_cv.education:
+                ats_score += 10
+                print("✅ ATS Education Score: +10")
+            else:
+                print("⚠️ ATS Education Score: +0")
+            
+            # 5. Điểm cho summary (10 điểm)
+            if parsed_cv.summary and len(str(parsed_cv.summary).strip()) > 20:
+                ats_score += 10
+                print("✅ ATS Summary Score: +10")
+            else:
+                print("⚠️ ATS Summary Score: +0")
+            
+            # Đảm bảo điểm không vượt quá 75
+            ats_score = min(ats_score, 75)
+            
+            print(f"🎯 ATS Score Total: {ats_score}/75")
+            return ats_score
+            
+        except Exception as e:
+            print(f"❌ Error calculating ATS score: {e}")
+            return 50  # Điểm trung bình nếu có lỗi
 
     def _calculate_overall_score(self, ats_score: int, quality_analysis: Dict, cv_skills_count: int, jd_skills_count: int, cv_skills: List[str], jd_skills: List[str], job_category: str, position_match_score: int, matching_result: Dict = None) -> int:
-        """
-        Tính điểm tổng thể với logic cải thiện:
-        - ATS Score: 35%
-        - Skills Matching: 30%
-        - Position Match: 25%
-        - Quality Analysis: 10%
-        """
+        """Tính điểm tổng thể dựa trên các thành phần"""
         try:
+            print(f"🔢 Calculating Overall Score...")
+            
             # 1. ATS Score (35%)
             ats_component = ats_score * 0.35
+            print(f"   ATS Component: {ats_score} × 0.35 = {ats_component:.2f}")
             
             # 2. Skills Matching (30%) - Sử dụng kết quả từ Intelligent JD Matching
-            skills_match = 0
-            if jd_skills_count > 0:
-                # Sử dụng matching_result từ Intelligent JD Matching
-                if matching_result and 'match_score' in matching_result:
-                    # Lấy match score từ intelligent matching
-                    skills_match = matching_result.get('match_score', 0)
-                else:
-                    # Fallback: tính toán đơn giản
-                    matching_skills = set(cv_skills) & set(jd_skills)
-                    skills_match = (len(matching_skills) / jd_skills_count) * 100 if jd_skills_count > 0 else 0
+            if matching_result and 'match_score' in matching_result:
+                # Lấy match score từ intelligent matching
+                skills_match = matching_result.get('match_score', 0)
+                print(f"   Skills Match: {skills_match}% (from intelligent matching)")
+            else:
+                # Fallback: tính toán đơn giản
+                matching_skills = set(cv_skills) & set(jd_skills)
+                skills_match = (len(matching_skills) / jd_skills_count) * 100 if jd_skills_count > 0 else 0
+                print(f"   Skills Match: {skills_match:.1f}% (fallback calculation)")
             
             skills_component = skills_match * 0.30
+            print(f"   Skills Component: {skills_match:.1f} × 0.30 = {skills_component:.2f}")
             
             # 3. Position Match (25%) - Cải thiện với logic mới
             position_component = position_match_score * 0.25
+            print(f"   Position Component: {position_match_score} × 0.25 = {position_component:.2f}")
             
             # 4. Quality Analysis (10%) - Sử dụng quality_score từ CV Quality Analyzer
             quality_score = quality_analysis.get('quality_score', 0) * 100  # Chuyển về thang 100
             quality_component = quality_score * 0.10
+            print(f"   Quality Component: {quality_score:.1f} × 0.10 = {quality_component:.2f}")
             
             # Tính tổng điểm
             overall_score = ats_component + skills_component + position_component + quality_component
@@ -755,11 +780,16 @@ class CVEvaluationService:
             # Đảm bảo điểm không vượt quá 100
             overall_score = min(overall_score, 100)
             
+            print(f"🎯 Overall Score Calculation:")
+            print(f"   ATS: {ats_component:.2f} + Skills: {skills_component:.2f} + Position: {position_component:.2f} + Quality: {quality_component:.2f}")
+            print(f"   Total: {overall_score:.2f}/100")
+            
             return int(overall_score)
             
         except Exception as e:
-            print(f"❌ Lỗi tính overall score: {e}")
-            return 50  # Điểm trung bình nếu có lỗi
+            print(f"❌ Error calculating overall score: {e}")
+            # Fallback: tính điểm trung bình
+            return int((ats_score + (skills_match if 'skills_match' in locals() else 0) + position_match_score + (quality_analysis.get('quality_score', 0) * 100)) / 4)
 
     def _calculate_industry_specific_score(self, job_category: str, job_position: str, matching_result: dict, quality_score: float) -> dict:
         """Tính điểm theo ngành nghề cụ thể"""
@@ -849,7 +879,7 @@ class CVEvaluationService:
         # Sử dụng overall_score đã được tính trước đó
         if overall_score is None:
             # Fallback: tính lại nếu cần
-            ats_score = self._calculate_ats_score(quality_analysis, parsed_cv)
+            ats_score = self._calculate_ats_score(parsed_cv, quality_analysis)
             overall_score = self._calculate_overall_score(
                 ats_score,
                 quality_analysis,

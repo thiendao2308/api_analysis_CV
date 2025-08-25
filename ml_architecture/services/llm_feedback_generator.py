@@ -230,11 +230,44 @@ YÊU CẦU FEEDBACK:
         
         try:
             prompt = f"""
-Điểm CV: {overall_score}/100
-Ngành nghề: {job_category}
+        Bạn là chuyên gia tư vấn CV chuyên nghiệp. Hãy phân tích CV và đưa ra feedback chi tiết để cải thiện CV.
 
-Hãy đưa ra 1-2 câu feedback ngắn gọn, chân thật và động viên cho ứng viên.
-"""
+        THÔNG TIN CV:
+        - Tên ứng viên: {applicant_name}
+        - Vị trí ứng tuyển: {job_position}
+        - Ngành nghề: {job_category}
+        - Tỷ lệ khớp: {skills_match_score:.1f}%
+        - Điểm tổng thể: {overall_score:.1f}/100
+
+        QUAN TRỌNG - CV ĐÃ CÓ NHỮNG KỸ NĂNG SAU:
+        {matching_skills[:8]}
+
+        CV CHỈ THIẾU NHỮNG KỸ NĂNG SAU:
+        {missing_skills[:5]}
+        
+        YÊU CẦU FEEDBACK:
+        1. Viết 2-3 câu tổng hợp điểm mạnh về kỹ năng, nêu rõ 3-4 kỹ năng phù hợp nổi bật nhất.
+        2. Viết 2-3 câu tổng hợp điểm cần cải thiện, CHỈ nêu 3-4 kỹ năng thiếu quan trọng nhất.
+        3. Gợi ý cải thiện cụ thể (3-4 gợi ý ngắn gọn).
+        4. Đảm bảo feedback đa chiều nhưng ngắn gọn, dễ hiểu.
+        5. KHÔNG được gợi ý bổ sung những kỹ năng mà CV đã có.
+
+        Trả về JSON format đầy đủ:
+        {{
+            "overall_assessment": "Đánh giá tổng quan ngắn gọn (1-2 câu)",
+            "strengths": ["2-3 câu tổng hợp điểm mạnh, nêu rõ 3-4 kỹ năng phù hợp nổi bật"],
+            "weaknesses": ["2-3 câu tổng hợp điểm cần cải thiện, CHỈ nêu 3-4 kỹ năng thiếu"],
+            "specific_suggestions": ["3-4 gợi ý cải thiện ngắn gọn và cụ thể"],
+            "priority_actions": ["2-3 hành động ưu tiên với timeline ngắn"],
+            "ats_optimization": "Gợi ý tối ưu ATS cụ thể (1-2 câu)"
+        }}
+
+        LƯU Ý:
+        - Feedback phải cụ thể, thực tế và có thể thực hiện được
+        - Tập trung vào kỹ năng và kinh nghiệm, không phải thông tin cá nhân
+        - Sử dụng ngôn ngữ tích cực, khuyến khích cải thiện
+        - Đảm bảo phù hợp với vị trí {job_position} và ngành {job_category}
+        """
             
             response = self.client.chat.completions.create(
                 model="gpt-3.5-turbo",

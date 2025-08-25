@@ -163,21 +163,80 @@ class IntelligentCVParser:
             return ""
 
     def extract_job_title(self, text: str) -> Optional[str]:
-        """Trích xuất job title thông minh từ CV"""
+        """Trích xuất job title thông minh từ CV sử dụng LLM"""
+        try:
+            # Thử dùng LLM trước
+            job_title = self._extract_job_title_with_llm(text)
+            if job_title:
+                return job_title
+            
+            # Fallback về rules cũ nếu LLM thất bại
+            return self._extract_job_title_with_rules(text)
+            
+        except Exception as e:
+            logger.error(f"Error extracting job title: {e}")
+            return self._extract_job_title_with_rules(text)
+
+    def _extract_job_title_with_llm(self, text: str) -> Optional[str]:
+        """Trích xuất job title bằng LLM"""
+        try:
+            # Lấy 15 dòng đầu để giảm token usage
+            lines = text.split('\n')
+            cv_preview = '\n'.join(lines[:15])
+            
+            prompt = f"""
+            Hãy trích xuất job title/vị trí công việc chính từ CV sau đây.
+            
+            CV TEXT:
+            {cv_preview}
+            
+            Yêu cầu:
+            1. Tìm vị trí công việc chính (Frontend Developer, Backend Developer, Full Stack Developer, etc.)
+            2. Nếu có nhiều vị trí, chọn vị trí gần nhất hoặc chính
+            3. Trả về chỉ tên vị trí, không có giải thích
+            
+            Trả về: "Job Title" hoặc null nếu không tìm thấy
+            """
+            
+            # Gọi OpenAI API
+            import openai
+            import os
+            api_key = os.getenv('OPENAI_API_KEY')
+            if not api_key:
+                return None
+                
+            client = openai.OpenAI(api_key=api_key)
+            response = client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=50,
+                temperature=0.1,
+            )
+            
+            job_title = response.choices[0].message.content.strip()
+            
+            # Clean up response
+            if job_title and job_title.lower() != "null" and len(job_title) < 100:
+                return job_title
+                
+            return None
+            
+        except Exception as e:
+            logger.error(f"LLM job title extraction failed: {e}")
+            return None
+
+    def _extract_job_title_with_rules(self, text: str) -> Optional[str]:
+        """Fallback: trích xuất job title bằng rules cũ"""
         lines = text.split('\n')
         
         # Tìm trong 10 dòng đầu (thường job title ở đầu CV)
         for i, line in enumerate(lines[:10]):
             line = line.strip()
-            if not line:
+            
+            # Bỏ qua dòng trống hoặc quá ngắn
+            if len(line) < 3 or len(line) > 100:
                 continue
                 
-            # Kiểm tra các pattern
-            for pattern in self.job_title_patterns:
-                match = re.search(pattern, line, re.IGNORECASE)
-                if match:
-                    return match.group(0).strip()
-            
             # Kiểm tra các từ khóa job title đơn giản
             job_keywords = [
                 "developer", "engineer", "manager", "specialist", "analyst",
@@ -185,12 +244,11 @@ class IntelligentCVParser:
                 "director", "supervisor", "lead", "senior", "junior"
             ]
             
-            words = line.lower().split()
-            for word in words:
-                if word in job_keywords:
-                    return line.strip()
+            line_lower = line.lower()
+            if any(keyword in line_lower for keyword in job_keywords):
+                return line.strip()
         
-                return None
+        return None
 
     def extract_sections(self, text: str) -> Dict[str, str]:
         """Trích xuất các section từ CV"""
