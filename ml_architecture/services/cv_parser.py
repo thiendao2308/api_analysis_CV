@@ -370,17 +370,17 @@ class IntelligentCVParser:
             return None
 
     def _auto_detect_summary(self, lines: List[str]) -> List[str]:
-        """Tự động phát hiện summary dựa trên pattern và nội dung"""
+        """Tự động phát hiện summary dựa trên pattern và nội dung - cải thiện"""
         summary_lines = []
         
-        # Tìm trong 10 dòng đầu (thường summary ở đầu CV)
-        for i, line in enumerate(lines[:10]):
+        # Tìm trong 15 dòng đầu (tăng từ 10)
+        for i, line in enumerate(lines[:15]):
             line = line.strip()
             if not line:
                 continue
             
             # Bỏ qua dòng quá ngắn hoặc quá dài
-            if len(line) < 15 or len(line) > 250:
+            if len(line) < 15 or len(line) > 300:
                 continue
             
             # Bỏ qua dòng có vẻ là header (toàn chữ hoa, có dấu gạch dưới)
@@ -396,6 +396,11 @@ class IntelligentCVParser:
             if len(line) < 30 and any(keyword in line.lower() for keyword in job_keywords):
                 continue
             
+            # Bỏ qua dòng có vẻ là section header
+            section_keywords = ['experience', 'education', 'skills', 'projects', 'kinh nghiệm', 'học vấn', 'kỹ năng', 'dự án']
+            if any(keyword in line.lower() for keyword in section_keywords):
+                continue
+            
             # Kiểm tra xem có phải là câu mô tả không
             if self._is_descriptive_sentence(line):
                 summary_lines.append(line)
@@ -405,7 +410,7 @@ class IntelligentCVParser:
         return summary_lines
 
     def _is_descriptive_sentence(self, text: str) -> bool:
-        """Kiểm tra xem text có phải là câu mô tả không"""
+        """Kiểm tra xem text có phải là câu mô tả không - cải thiện"""
         # Bỏ qua dòng quá ngắn
         if len(text) < 20:
             return False
@@ -418,11 +423,17 @@ class IntelligentCVParser:
         if text.startswith('•') or text.startswith('-') or text.startswith('*'):
             return False
         
+        # Bỏ qua dòng có vẻ là contact info
+        if re.search(r'\b[A-Za-z0-9._%+-]+@[A-Za-z0-9.-]+\.[A-Z|a-z]{2,}\b', text):
+            return False
+        
         # Kiểm tra có vẻ là câu mô tả (có động từ, tính từ)
         descriptive_words = [
             'experience', 'skilled', 'proficient', 'expertise', 'background',
             'passionate', 'dedicated', 'motivated', 'creative', 'analytical',
-            'kinh nghiệm', 'thành thạo', 'chuyên môn', 'đam mê', 'sáng tạo'
+            'kinh nghiệm', 'thành thạo', 'chuyên môn', 'đam mê', 'sáng tạo',
+            'developed', 'created', 'built', 'implemented', 'designed',
+            'phát triển', 'tạo ra', 'xây dựng', 'thiết kế', 'thực hiện'
         ]
         
         text_lower = text.lower()
@@ -431,6 +442,11 @@ class IntelligentCVParser:
         
         # Kiểm tra có vẻ là câu hoàn chỉnh (có dấu chấm, dấu phẩy)
         if '.' in text or ',' in text:
+            return True
+        
+        # Kiểm tra có vẻ là câu mô tả về bản thân
+        personal_words = ['i am', 'i\'m', 'i have', 'my', 'tôi là', 'tôi có', 'của tôi']
+        if any(word in text_lower for word in personal_words):
             return True
         
         return False
@@ -465,72 +481,186 @@ class IntelligentCVParser:
         experience = []
         
         try:
-            # Tìm experience section
+            # BƯỚC 1: Tìm experience section theo keyword
             sections = self.extract_sections(text)
             exp_section = sections.get('experience', '')
             
+            # BƯỚC 2: Nếu không tìm được section, tìm theo keyword trong toàn bộ text
             if not exp_section:
-                # Fallback: tìm trong toàn bộ text
-                exp_keywords = ['work experience', 'experience', 'kinh nghiệm', 'công việc']
+                exp_keywords = ['work experience', 'experience', 'kinh nghiệm', 'công việc', 'employment']
                 for keyword in exp_keywords:
                     if keyword.lower() in text.lower():
                         # Tìm đoạn text sau keyword
                         start_idx = text.lower().find(keyword.lower())
                         if start_idx != -1:
-                            # Lấy 500 ký tự sau keyword
-                            exp_text = text[start_idx:start_idx + 500]
+                            # Lấy 800 ký tự sau keyword
+                            exp_text = text[start_idx:start_idx + 800]
                             exp_section = exp_text
                             break
             
-            if exp_section:
-                # Tìm các block kinh nghiệm
-                exp_blocks = re.split(r'\n\s*\n', exp_section)
-                
-                for block in exp_blocks:
-                    if not block.strip():
-                        continue
-                        
-                    # Tìm job title, company, duration
-                    lines = block.split('\n')
-                    if len(lines) >= 2:
-                        job_info = {
-                            'title': lines[0].strip(),
-                            'company': '',
-                            'duration': '',
-                            'description': '\n'.join(lines[1:]).strip()
-                        }
-                        
-                        # Tìm company và duration trong dòng thứ 2
-                        if len(lines) >= 2:
-                            second_line = lines[1]
-                            # Pattern: Company Name | Duration hoặc Company Name - Duration
-                            company_duration = re.match(r'(.+?)\s*[|–-]\s*(.+)', second_line)
-                            if company_duration:
-                                job_info['company'] = company_duration.group(1).strip()
-                                job_info['duration'] = company_duration.group(2).strip()
-                            else:
-                                job_info['company'] = second_line.strip()
-                        
-                        experience.append(job_info)
+            # BƯỚC 3: Nếu vẫn không có, tìm pattern kinh nghiệm tự do
+            if not exp_section:
+                exp_section = self._find_free_form_experience(text)
             
-            # Nếu vẫn không tìm được, tạo experience từ projects
+            # BƯỚC 4: Parse experience từ section tìm được
+            if exp_section:
+                experience = self._parse_experience_blocks(exp_section)
+            
+            # BƯỚC 5: Nếu vẫn không có, tạo experience từ projects
             if not experience:
-                projects = self.extract_projects(text)
-                if projects:
-                    # Chuyển projects thành experience
-                    for project in projects:
-                        exp_info = {
-                            'title': f"Project: {project.get('name', 'Unknown')}",
-                            'company': 'Personal Project',
-                            'duration': 'Current',
-                            'description': project.get('description', '')
-                        }
-                        experience.append(exp_info)
+                experience = self._create_experience_from_projects(text)
             
             return experience
             
         except Exception as e:
             logger.error(f"Error extracting experience: {e}")
+            return []
+
+    def _find_free_form_experience(self, text: str) -> str:
+        """Tìm kinh nghiệm trong CV có cấu trúc tự do"""
+        try:
+            lines = text.split('\n')
+            exp_lines = []
+            in_experience_section = False
+            
+            for i, line in enumerate(lines):
+                line = line.strip()
+                if not line:
+                    continue
+                
+                # Tìm bắt đầu section experience
+                exp_start_keywords = [
+                    'work experience', 'experience', 'kinh nghiệm', 'công việc',
+                    'employment history', 'professional experience'
+                ]
+                
+                if any(keyword in line.lower() for keyword in exp_start_keywords):
+                    in_experience_section = True
+                    continue
+                
+                # Tìm kết thúc section (gặp section khác)
+                if in_experience_section:
+                    section_end_keywords = [
+                        'education', 'học vấn', 'skills', 'kỹ năng', 'projects',
+                        'dự án', 'certifications', 'chứng chỉ'
+                    ]
+                    
+                    if any(keyword in line.lower() for keyword in section_end_keywords):
+                        break
+                    
+                    # Thêm dòng vào experience
+                    if len(line) > 5:  # Bỏ qua dòng quá ngắn
+                        exp_lines.append(line)
+                
+                # Nếu chưa vào experience section, tìm pattern kinh nghiệm
+                elif not in_experience_section and i < len(lines) - 1:
+                    # Pattern: Job Title - Company | Duration
+                    if self._looks_like_experience_line(line, lines[i+1] if i+1 < len(lines) else ""):
+                        in_experience_section = True
+                        exp_lines.append(line)
+                        if i+1 < len(lines):
+                            exp_lines.append(lines[i+1])
+            
+            return '\n'.join(exp_lines)
+            
+        except Exception as e:
+            logger.error(f"Error finding free-form experience: {e}")
+            return ""
+
+    def _looks_like_experience_line(self, line: str, next_line: str) -> bool:
+        """Kiểm tra xem dòng có vẻ là experience line không"""
+        line_lower = line.lower()
+        next_line_lower = next_line.lower()
+        
+        # Pattern 1: Job Title - Company
+        if ' - ' in line or ' | ' in line:
+            return True
+        
+        # Pattern 2: Job Title ở dòng 1, Company ở dòng 2
+        job_keywords = ['developer', 'engineer', 'manager', 'specialist', 'analyst', 'designer']
+        if any(keyword in line_lower for keyword in job_keywords):
+            if len(line) < 50:  # Job title thường ngắn
+                return True
+        
+        # Pattern 3: Có từ khóa kinh nghiệm
+        exp_keywords = ['experience', 'kinh nghiệm', 'worked', 'developed', 'created']
+        if any(keyword in line_lower for keyword in exp_keywords):
+            return True
+        
+        return False
+
+    def _parse_experience_blocks(self, exp_section: str) -> List[Dict]:
+        """Parse experience blocks từ section text"""
+        experience = []
+        
+        try:
+            # Tách theo dấu xuống dòng kép
+            exp_blocks = re.split(r'\n\s*\n', exp_section)
+            
+            for block in exp_blocks:
+                if not block.strip():
+                    continue
+                    
+                lines = block.split('\n')
+                if len(lines) >= 2:
+                    job_info = {
+                        'title': lines[0].strip(),
+                        'company': '',
+                        'duration': '',
+                        'description': '\n'.join(lines[1:]).strip()
+                    }
+                    
+                    # Tìm company và duration trong dòng thứ 2
+                    if len(lines) >= 2:
+                        second_line = lines[1]
+                        # Pattern: Company Name | Duration hoặc Company Name - Duration
+                        company_duration = re.match(r'(.+?)\s*[|–-]\s*(.+)', second_line)
+                        if company_duration:
+                            job_info['company'] = company_duration.group(1).strip()
+                            job_info['duration'] = company_duration.group(2).strip()
+                        else:
+                            job_info['company'] = second_line.strip()
+                    
+                    experience.append(job_info)
+            
+            return experience
+            
+        except Exception as e:
+            logger.error(f"Error parsing experience blocks: {e}")
+            return []
+
+    def _create_experience_from_projects(self, text: str) -> List[Dict]:
+        """Tạo experience từ projects nếu không tìm được experience thực tế"""
+        try:
+            projects = self.extract_projects(text)
+            experience = []
+            
+            if projects:
+                for project in projects:
+                    exp_info = {
+                        'title': f"Project: {project.get('name', 'Unknown')}",
+                        'company': 'Personal Project',
+                        'duration': 'Current',
+                        'description': project.get('description', '')
+                    }
+                    experience.append(exp_info)
+            
+            # Nếu không có projects, tạo experience từ skills
+            if not experience:
+                skills = self.extract_skills(text)
+                if skills:
+                    exp_info = {
+                        'title': 'Freelance Developer',
+                        'company': 'Various Projects',
+                        'duration': 'Current',
+                        'description': f'Developed projects using: {", ".join(skills[:5])}'
+                    }
+                    experience.append(exp_info)
+            
+            return experience
+            
+        except Exception as e:
+            logger.error(f"Error creating experience from projects: {e}")
             return []
 
     def extract_education(self, text: str) -> List[Dict]:
@@ -615,6 +745,15 @@ class IntelligentCVParser:
             education = self.extract_education(text)
             projects = self.extract_projects(text)
             summary = self.extract_summary(text)
+            
+            # Debug logging
+            print(f"🔍 CV Parser Debug:")
+            print(f"   Job Title: {job_title}")
+            print(f"   Summary: {summary[:100] if summary else 'None'}...")
+            print(f"   Experience: {len(experience)} entries")
+            print(f"   Education: {len(education)} entries")
+            print(f"   Skills: {len(skills)} skills")
+            print(f"   Projects: {len(projects)} projects")
             
             return {
                 "raw_text": text,
