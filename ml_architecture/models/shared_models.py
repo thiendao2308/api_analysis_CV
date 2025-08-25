@@ -5,10 +5,13 @@ class ParsedCV(BaseModel):
     """
     Cấu trúc dữ liệu chứa thông tin đã được bóc tách từ một CV.
     """
+    job_title: Optional[str] = None
     summary: Optional[str] = None
     skills: List[str] = []
-    experience: Optional[str] = None
-    education: Optional[str] = None
+    experience: List[Dict[str, Any]] = []
+    education: List[Dict[str, Any]] = []
+    projects: List[Dict[str, Any]] = []
+    sections: Dict[str, str] = {}
 
 class MLInsights(BaseModel):
     """

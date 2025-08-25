@@ -406,10 +406,13 @@ class CVEvaluationService:
             # BƯỚC 5: Phân tích chất lượng CV
             from ..models.shared_models import ParsedCV
             parsed_cv_obj = ParsedCV(
-                summary=parsed_cv.get('sections', {}).get('summary', ''),
-                skills=cv_skills,
-                experience=parsed_cv.get('sections', {}).get('experience', ''),
-                education=parsed_cv.get('sections', {}).get('education', '')
+                job_title=parsed_cv.get('job_title') or parsed_cv.get('sections', {}).get('job_title'),
+                summary=parsed_cv.get('summary') or parsed_cv.get('sections', {}).get('summary', ''),
+                skills=list(cv_skills) if isinstance(cv_skills, (list, set, tuple)) else [],
+                experience=parsed_cv.get('experience') if isinstance(parsed_cv.get('experience'), list) else [],
+                education=parsed_cv.get('education') if isinstance(parsed_cv.get('education'), list) else [],
+                projects=parsed_cv.get('projects') if isinstance(parsed_cv.get('projects'), list) else [],
+                sections=parsed_cv.get('sections', {}) if isinstance(parsed_cv.get('sections', {}), dict) else {}
             )
             if self.quality_analyzer is None:
                 from .cv_quality_analyzer import CVQualityAnalyzer
