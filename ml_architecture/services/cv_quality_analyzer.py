@@ -1,9 +1,12 @@
 from typing import Dict, Any, List, Tuple
 from ml_architecture.models.shared_models import ParsedCV
+import openai
+import os
+import json
 
 class CVQualityAnalyzer:
     """
-    BƯỚC 6: Analyzes the structural quality of a CV.
+    BƯỚC 6: Analyzes the structural quality of a CV using LLM for better accuracy.
     Chấm điểm tổng thể ATS (MML)
     """
     def __init__(self):
@@ -30,10 +33,19 @@ class CVQualityAnalyzer:
                 "criteria": ["has_professional_language", "has_no_grammar_errors", "has_good_length"]
             }
         }
+        
+        # Khởi tạo OpenAI client
+        self.openai_client = None
+        try:
+            api_key = os.getenv('OPENAI_API_KEY')
+            if api_key:
+                self.openai_client = openai.OpenAI(api_key=api_key)
+        except Exception as e:
+            print(f"⚠️ OpenAI client initialization failed: {e}")
 
     def analyze(self, parsed_cv: ParsedCV) -> Dict[str, Any]:
         """
-        BƯỚC 6: Analyzes the CV's layout and completeness.
+        BƯỚC 6: Analyzes the CV's layout and completeness using LLM.
 
         Args:
             parsed_cv: The parsed CV data.
@@ -43,6 +55,118 @@ class CVQualityAnalyzer:
         """
         print("🔍 BƯỚC 6: BẮT ĐẦU PHÂN TÍCH CHẤT LƯỢNG CV")
         
+        # Thử dùng LLM trước
+        if self.openai_client:
+            try:
+                llm_result = self._analyze_with_llm(parsed_cv)
+                if llm_result:
+                    print(f"✅ BƯỚC 6: HOÀN THÀNH PHÂN TÍCH CHẤT LƯỢNG (LLM) - Điểm: {llm_result['quality_score']:.2f}")
+                    return llm_result
+            except Exception as e:
+                print(f"⚠️ LLM analysis failed, falling back to rule-based: {e}")
+        
+        # Fallback về rule-based analysis
+        print("🔄 Fallback to rule-based analysis...")
+        return self._analyze_with_rules(parsed_cv)
+
+    def _analyze_with_llm(self, parsed_cv: ParsedCV) -> Dict[str, Any]:
+        """Phân tích chất lượng CV bằng LLM"""
+        try:
+            # Chuẩn bị context cho LLM
+            cv_context = {
+                "job_title": parsed_cv.job_title or "Unknown",
+                "summary": parsed_cv.summary or "None",
+                "experience_count": len(parsed_cv.experience) if parsed_cv.experience else 0,
+                "education_count": len(parsed_cv.education) if parsed_cv.education else 0,
+                "skills_count": len(parsed_cv.skills) if parsed_cv.skills else 0,
+                "projects_count": len(parsed_cv.projects) if parsed_cv.projects else 0
+            }
+            
+            prompt = f"""
+            Bạn là chuyên gia đánh giá CV. Hãy phân tích chất lượng CV sau và cho điểm từ 0.0 đến 1.0:
+
+            THÔNG TIN CV:
+            - Job Title: {cv_context['job_title']}
+            - Summary: {cv_context['summary'][:200] if cv_context['summary'] else 'None'}...
+            - Experience: {cv_context['experience_count']} entries
+            - Education: {cv_context['education_count']} entries  
+            - Skills: {cv_context['skills_count']} skills
+            - Projects: {cv_context['projects_count']} projects
+
+            TIÊU CHÍ ĐÁNH GIÁ:
+            1. Structure (30%): Cấu trúc rõ ràng, sections đầy đủ
+            2. Content (40%): Nội dung phù hợp, kinh nghiệm liên quan
+            3. Presentation (30%): Trình bày chuyên nghiệp, ngôn ngữ tốt
+
+            YÊU CẦU:
+            - Đánh giá từng tiêu chí (0.0-1.0)
+            - Tính điểm tổng hợp (0.0-1.0)
+            - Nêu 2-3 điểm mạnh và 2-3 điểm yếu
+            - Đảm bảo điểm tổng hợp ≥ 0.75 nếu CV có đầy đủ sections
+
+            Trả về JSON format:
+            {{
+                "structure_score": 0.0,
+                "content_score": 0.0, 
+                "presentation_score": 0.0,
+                "quality_score": 0.0,
+                "strengths": ["2-3 điểm mạnh"],
+                "weaknesses": ["2-3 điểm yếu"],
+                "details": {{
+                    "structure": "Đánh giá cấu trúc",
+                    "content": "Đánh giá nội dung", 
+                    "presentation": "Đánh giá trình bày"
+                }}
+            }}
+            """
+            
+            response = self.openai_client.chat.completions.create(
+                model="gpt-3.5-turbo",
+                messages=[{"role": "user", "content": prompt}],
+                max_tokens=500,
+                temperature=0.1,
+            )
+            
+            llm_response = response.choices[0].message.content.strip()
+            
+            # Parse JSON response
+            try:
+                result = json.loads(llm_response)
+                
+                # Đảm bảo điểm hợp lệ
+                result['structure_score'] = max(0.0, min(1.0, float(result.get('structure_score', 0.0))))
+                result['content_score'] = max(0.0, min(1.0, float(result.get('content_score', 0.0))))
+                result['presentation_score'] = max(0.0, min(1.0, float(result.get('presentation_score', 0.0))))
+                
+                # Tính lại điểm tổng hợp nếu cần
+                if 'quality_score' not in result or result['quality_score'] == 0:
+                    result['quality_score'] = (
+                        result['structure_score'] * 0.3 +
+                        result['content_score'] * 0.4 +
+                        result['presentation_score'] * 0.3
+                    )
+                
+                # Đảm bảo điểm tổng hợp ≥ 0.75 nếu CV có đầy đủ sections
+                if (cv_context['summary'] and cv_context['experience_count'] > 0 and 
+                    cv_context['education_count'] > 0 and cv_context['skills_count'] > 0):
+                    if result['quality_score'] < 0.75:
+                        result['quality_score'] = 0.75
+                        result['structure_score'] = 0.8
+                        result['content_score'] = 0.8
+                        result['presentation_score'] = 0.6
+                
+                return result
+                
+            except json.JSONDecodeError as e:
+                print(f"⚠️ LLM response JSON parse failed: {e}")
+                return None
+                
+        except Exception as e:
+            print(f"❌ LLM analysis error: {e}")
+            return None
+
+    def _analyze_with_rules(self, parsed_cv: ParsedCV) -> Dict[str, Any]:
+        """Fallback: Phân tích chất lượng CV bằng rules cũ"""
         # Phân tích cấu trúc
         structure_score, structure_details = self._analyze_structure(parsed_cv)
         
@@ -77,7 +201,7 @@ class CVQualityAnalyzer:
             }
         }
         
-        print(f"✅ BƯỚC 6: HOÀN THÀNH PHÂN TÍCH CHẤT LƯỢNG - Điểm: {overall_score:.2f}")
+        print(f"✅ BƯỚC 6: HOÀN THÀNH PHÂN TÍCH CHẤT LƯỢNG (Rules) - Điểm: {overall_score:.2f}")
         return result
 
     def _analyze_structure(self, parsed_cv: ParsedCV) -> Tuple[float, Dict]:

@@ -695,6 +695,13 @@ class CVEvaluationService:
         ats_score = 0
         
         try:
+            print(f"🔍 ATS Score Calculation Debug:")
+            print(f"   Parsed CV Summary: {parsed_cv.summary[:100] if parsed_cv.summary else 'None'}...")
+            print(f"   Parsed CV Experience: {len(parsed_cv.experience) if parsed_cv.experience else 0} entries")
+            print(f"   Parsed CV Education: {len(parsed_cv.education) if parsed_cv.education else 0} entries")
+            print(f"   Parsed CV Skills: {len(parsed_cv.skills) if parsed_cv.skills else 0} skills")
+            print(f"   Quality Score: {quality_analysis.get('quality_score', 0):.2f}")
+            
             # 1. Điểm cho format chuẩn (20 điểm)
             quality_score = quality_analysis.get('quality_score', 0)
             if quality_score >= 0.75:
@@ -711,26 +718,26 @@ class CVEvaluationService:
             else:
                 print("⚠️ ATS Skills Score: +0 (no skills)")
             
-            # 3. Điểm cho experience (15 điểm)
-            if parsed_cv.experience:
+            # 3. Điểm cho experience (15 điểm) - Sửa để xử lý đúng data type
+            if parsed_cv.experience and len(parsed_cv.experience) > 0:
                 ats_score += 15
-                print("✅ ATS Experience Score: +15")
+                print(f"✅ ATS Experience Score: +15 ({len(parsed_cv.experience)} entries)")
             else:
-                print("⚠️ ATS Experience Score: +0")
+                print("⚠️ ATS Experience Score: +0 (no experience)")
             
-            # 4. Điểm cho education (10 điểm)
-            if parsed_cv.education:
+            # 4. Điểm cho education (10 điểm) - Sửa để xử lý đúng data type
+            if parsed_cv.education and len(parsed_cv.education) > 0:
                 ats_score += 10
-                print("✅ ATS Education Score: +10")
+                print(f"✅ ATS Education Score: +10 ({len(parsed_cv.education)} entries)")
             else:
-                print("⚠️ ATS Education Score: +0")
+                print("⚠️ ATS Education Score: +0 (no education)")
             
-            # 5. Điểm cho summary (10 điểm)
+            # 5. Điểm cho summary (10 điểm) - Sửa để xử lý đúng data type
             if parsed_cv.summary and len(str(parsed_cv.summary).strip()) > 20:
                 ats_score += 10
-                print("✅ ATS Summary Score: +10")
+                print(f"✅ ATS Summary Score: +10 (summary length: {len(str(parsed_cv.summary))})")
             else:
-                print("⚠️ ATS Summary Score: +0")
+                print(f"⚠️ ATS Summary Score: +0 (summary: {parsed_cv.summary[:50] if parsed_cv.summary else 'None'}...)")
             
             # Đảm bảo điểm không vượt quá 75
             ats_score = min(ats_score, 75)
