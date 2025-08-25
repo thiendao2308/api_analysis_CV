@@ -94,14 +94,21 @@ KẾT QUẢ SO KHỚP:
 
 YÊU CẦU FEEDBACK:
 1. Viết 2-3 câu tổng hợp điểm mạnh về kỹ năng, nêu rõ 3-4 kỹ năng phù hợp nổi bật nhất.
-2. Viết 2-3 câu tổng hợp điểm cần cải thiện, nêu rõ 3-4 kỹ năng thiếu quan trọng nhất.
+2. Viết 2-3 câu tổng hợp điểm cần cải thiện, CHỈ nêu 3-4 kỹ năng thiếu quan trọng nhất.
 3. Gợi ý cải thiện cụ thể (3-4 gợi ý ngắn gọn).
 4. Đảm bảo feedback đa chiều nhưng ngắn gọn, dễ hiểu.
-5. Trả về JSON format đầy đủ:
+
+LƯU Ý QUAN TRỌNG:
+- CV đã có các kỹ năng: {', '.join(matching_skills[:8])}
+- KHÔNG được gợi ý học lại những kỹ năng này
+- Chỉ gợi ý kỹ năng thực sự thiếu trong danh sách "Kỹ năng thiếu"
+- Tập trung vào kỹ năng nâng cao hoặc chuyên sâu hơn
+
+Trả về JSON format đầy đủ:
 {{
   "overall_assessment": "Đánh giá tổng quan ngắn gọn (1-2 câu)",
   "strengths": ["2-3 câu tổng hợp điểm mạnh, nêu rõ 3-4 kỹ năng phù hợp nổi bật"],
-  "weaknesses": ["2-3 câu tổng hợp điểm cần cải thiện, nêu rõ 3-4 kỹ năng thiếu quan trọng"],
+  "weaknesses": ["2-3 câu tổng hợp điểm cần cải thiện, CHỈ nêu 3-4 kỹ năng thiếu quan trọng"],
   "specific_suggestions": ["3-4 gợi ý cải thiện ngắn gọn và cụ thể"],
   "priority_actions": ["2-3 hành động ưu tiên với timeline ngắn"],
   "encouragement": "Lời động viên ngắn gọn và thực tế"
@@ -119,7 +126,13 @@ YÊU CẦU FEEDBACK:
                         "role": "system",
                         "content": """Bạn là một chuyên gia tư vấn CV với 10+ năm kinh nghiệm. 
                         Bạn có khả năng đánh giá chân thật và đưa ra gợi ý hữu ích cho ứng viên.
-                        Hãy luôn trả về JSON format chính xác và đầy đủ."""
+                        
+                        QUY TẮC QUAN TRỌNG:
+                        1. KHÔNG được gợi ý học lại những kỹ năng mà CV đã có
+                        2. Chỉ gợi ý kỹ năng thực sự thiếu trong danh sách "Kỹ năng thiếu"
+                        3. Tập trung vào kỹ năng nâng cao hoặc chuyên sâu hơn
+                        4. Luôn trả về JSON format chính xác và đầy đủ
+                        5. Feedback phải cụ thể, thực tế và có thể thực hiện được"""
                     },
                     {
                         "role": "user",
@@ -189,30 +202,58 @@ YÊU CẦU FEEDBACK:
                 strengths.append(f"Ngoài ra, bạn còn có kinh nghiệm với {', '.join(top_matching[3:])}, điều này giúp bạn nổi bật so với các ứng viên khác.")
             strengths.append("Việc có nhiều kỹ năng đa dạng như vậy cho thấy khả năng thích ứng và học hỏi nhanh của bạn.")
         
-        # Tạo weaknesses đa chiều
+        # Tạo weaknesses đa chiều - CHỈ gợi ý skills thiếu
         weaknesses = []
         if missing_skills:
-            top_missing = missing_skills[:6]  # Lấy 6 kỹ năng thiếu quan trọng nhất
-            weaknesses.append(f"Bạn cần bổ sung các kỹ năng quan trọng: {', '.join(top_missing[:3])}. Việc thiếu những kỹ năng này có thể làm giảm cơ hội thành công.")
-            if len(top_missing) > 3:
-                weaknesses.append(f"Đặc biệt, {', '.join(top_missing[3:])} là những kỹ năng rất được ưa chuộng trong ngành hiện nay.")
-            weaknesses.append("Việc phát triển những kỹ năng này sẽ tăng đáng kể giá trị của bạn trong mắt nhà tuyển dụng.")
+            # Lọc ra những skills thực sự thiếu, không phải skills đã có
+            truly_missing = [skill for skill in missing_skills if skill not in matching_skills]
+            top_missing = truly_missing[:6] if truly_missing else missing_skills[:6]
+            
+            if top_missing:
+                weaknesses.append(f"Bạn cần bổ sung các kỹ năng quan trọng: {', '.join(top_missing[:3])}. Việc thiếu những kỹ năng này có thể làm giảm cơ hội thành công.")
+                if len(top_missing) > 3:
+                    weaknesses.append(f"Đặc biệt, {', '.join(top_missing[3:])} là những kỹ năng rất được ưa chuộng trong ngành hiện nay.")
+                weaknesses.append("Việc phát triển những kỹ năng này sẽ tăng đáng kể giá trị của bạn trong mắt nhà tuyển dụng.")
+            else:
+                weaknesses.append("CV của bạn đã có đầy đủ các kỹ năng cơ bản cần thiết cho vị trí này.")
+        else:
+            weaknesses.append("CV của bạn đã đáp ứng tốt các yêu cầu kỹ năng của vị trí.")
         
-        # Tạo suggestions chi tiết và đa chiều
+        # Tạo suggestions chi tiết và đa chiều - CHỈ gợi ý skills thiếu
         suggestions = []
         if missing_skills:
-            suggestions.append("Hãy làm nổi bật các kỹ năng phù hợp trong CV và thêm các dự án thực tế để chứng minh khả năng")
-            suggestions.append("Bổ sung thêm kinh nghiệm thực tế thông qua các dự án freelance hoặc open-source")
-            suggestions.append("Cập nhật CV theo từng vị trí ứng tuyển cụ thể, tập trung vào keywords phù hợp")
-            suggestions.append("Tham gia các khóa học online và lấy chứng chỉ để củng cố kiến thức")
-            suggestions.append("Xây dựng portfolio với các dự án demo để showcase kỹ năng")
+            truly_missing = [skill for skill in missing_skills if skill not in matching_skills]
+            if truly_missing:
+                suggestions.append("Hãy làm nổi bật các kỹ năng phù hợp trong CV và thêm các dự án thực tế để chứng minh khả năng")
+                suggestions.append("Bổ sung thêm kinh nghiệm thực tế thông qua các dự án freelance hoặc open-source")
+                suggestions.append("Cập nhật CV theo từng vị trí ứng tuyển cụ thể, tập trung vào keywords phù hợp")
+                suggestions.append("Tham gia các khóa học online và lấy chứng chỉ để củng cố kiến thức")
+                suggestions.append("Xây dựng portfolio với các dự án demo để showcase kỹ năng")
+            else:
+                suggestions.append("CV của bạn đã rất tốt! Hãy tập trung vào việc làm nổi bật các kỹ năng hiện có")
+                suggestions.append("Thêm các dự án thực tế để chứng minh khả năng áp dụng kỹ năng")
+                suggestions.append("Cập nhật CV với các thành tựu và kết quả cụ thể")
+        else:
+            suggestions.append("CV của bạn đã hoàn thiện! Hãy tập trung vào việc tối ưu hóa trình bày")
+            suggestions.append("Thêm các thành tựu cụ thể và số liệu để tăng tính thuyết phục")
+            suggestions.append("Đảm bảo CV được format đẹp và dễ đọc")
         
-        # Tạo priority actions với timeline
+        # Tạo priority actions với timeline - CHỈ gợi ý skills thiếu
         priority_actions = []
         if missing_skills:
-            priority_actions.append("Ưu tiên học và thực hành các kỹ năng thiếu trong 2-3 tháng tới")
-            priority_actions.append("Tạo dự án portfolio trong 1 tháng để chứng minh kỹ năng")
-            priority_actions.append("Tham gia các cộng đồng developer để networking và học hỏi kinh nghiệm")
+            truly_missing = [skill for skill in missing_skills if skill not in matching_skills]
+            if truly_missing:
+                priority_actions.append("Ưu tiên học và thực hành các kỹ năng thiếu trong 2-3 tháng tới")
+                priority_actions.append("Tạo dự án portfolio trong 1 tháng để chứng minh kỹ năng")
+                priority_actions.append("Tham gia các cộng đồng developer để networking và học hỏi kinh nghiệm")
+            else:
+                priority_actions.append("Tập trung vào việc tối ưu hóa CV và làm nổi bật các kỹ năng hiện có")
+                priority_actions.append("Xây dựng portfolio với các dự án thực tế")
+                priority_actions.append("Chuẩn bị cho phỏng vấn với các ví dụ cụ thể về kỹ năng")
+        else:
+            priority_actions.append("Tối ưu hóa CV để tăng tính chuyên nghiệp")
+            priority_actions.append("Chuẩn bị portfolio và các dự án demo")
+            priority_actions.append("Luyện tập phỏng vấn với focus vào các kỹ năng đã có")
         
         return {
             "overall_assessment": assessment,
@@ -223,10 +264,17 @@ YÊU CẦU FEEDBACK:
             "encouragement": encouragement
         }
     
-    def generate_quick_feedback(self, overall_score: float, job_category: str) -> str:
-        """Generate quick feedback for simple cases"""
+    def generate_quick_feedback(self, overall_score: float, job_category: str, 
+                               applicant_name: str = "Ứng viên", job_position: str = "Unknown",
+                               skills_match_score: float = 0.0, matching_skills: list = None, 
+                               missing_skills: list = None) -> str:
+        """Generate quick feedback for simple cases with proper parameters"""
         if not self.client:
             return self._generate_quick_fallback(overall_score)
+        
+        # Ensure lists are not None
+        matching_skills = matching_skills or []
+        missing_skills = missing_skills or []
         
         try:
             prompt = f"""
@@ -240,10 +288,10 @@ YÊU CẦU FEEDBACK:
         - Điểm tổng thể: {overall_score:.1f}/100
 
         QUAN TRỌNG - CV ĐÃ CÓ NHỮNG KỸ NĂNG SAU:
-        {matching_skills[:8]}
+        {matching_skills[:8] if matching_skills else []}
 
         CV CHỈ THIẾU NHỮNG KỸ NĂNG SAU:
-        {missing_skills[:5]}
+        {missing_skills[:5] if missing_skills else []}
         
         YÊU CẦU FEEDBACK:
         1. Viết 2-3 câu tổng hợp điểm mạnh về kỹ năng, nêu rõ 3-4 kỹ năng phù hợp nổi bật nhất.
@@ -253,7 +301,7 @@ YÊU CẦU FEEDBACK:
         5. KHÔNG được gợi ý bổ sung những kỹ năng mà CV đã có.
 
         LƯU Ý QUAN TRỌNG:
-        - CV đã có: Git, NextJS, RESTful APIs, TypeScript, React, Node.js
+        - CV đã có: {', '.join(matching_skills[:5]) if matching_skills else 'Không có thông tin'}
         - KHÔNG được gợi ý học lại những kỹ năng này
         - Chỉ gợi ý kỹ năng thực sự thiếu trong missing_skills
         - Tập trung vào kỹ năng nâng cao hoặc chuyên sâu hơn
